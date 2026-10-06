@@ -531,6 +531,13 @@ async function visit() {
     showStamps();
     $("tally").hidden = false;
 
+    // Keep checking while this page is open, so a cleared registration empties this screen too:
+    // when the person comes back to the tab, when signal returns, and about every 30 seconds for 10 minutes.
+    const recheck = () => { if (!document.hidden && navigator.onLine && !outbox().some(q => q.action === "check")) queueBg({ action: "check", pid }); };
+    document.addEventListener("visibilitychange", recheck);
+    addEventListener("online", recheck);
+    const t0 = Date.now(), iv = setInterval(() => { if (Date.now() - t0 > 600000) clearInterval(iv); else setTimeout(recheck, Math.random() * 5000); }, 30000);
+
     // Rebuild the checklist from the server (for a new phone, or after data was cleared).
     $("resync").onclick = async () => {
       $("resync").disabled = true;
