@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+<main class="wide">
+  <h1>QR codes and tally</h1>
+  <p class="sub noprint">Print the QR codes below. Sign in to see the tally.</p>
+
+  <div class="noprint"><button class="ghost" onclick="window.print()">Print QR codes</button></div>
+  <h2>QR codes</h2>
+  <div class="qrs" id="qrs"></div>
+
+  <section class="noprint" id="login">
+    <h2>Tally</h2>
+    <form class="card" id="lf" style="max-width:380px">
+      <label for="em">Admin email</label><input id="em" type="email" required autocomplete="username">
+      <label for="pw">Password</label><input id="pw" type="password" required autocomplete="current-password">
+      <button class="full">Sign in</button>
+      <div class="msg" id="lmsg" role="alert"></div>
+    </form>
+  </section>
+
+  <section class="noprint hidden" id="report">
+    <h2>Tally</h2>
+    <p><strong id="np"></strong> registered, <strong id="nall"></strong> visited every agency.</p>
+    <table><thead><tr><th>Agency</th><th>Visits</th></tr></thead><tbody id="ag"></tbody></table>
+    <h2>Participants</h2>
+    <table><thead><tr><th>Code</th><th>Name</th><th>Mobile</th><th>Agencies</th></tr></thead><tbody id="pt"></tbody></table>
+    <p><button class="ghost" id="out">Sign out</button></p>
+  </section>
+</main>
+
+<script type="module">
+import { db, auth, AGENCIES, collection, getDocs, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "./firebase.js";
+
+const $ = id => document.getElementById(id);
+const base = location.href.replace(/admin\.html.*$/, "");
+
+// QR codes
+const items = [["Registration", base + "register.html"],
+  ...Object.entries(AGENCIES).map(([c, n]) => [n, `${base}visit.html?agency=${c}`])];
+for (const [label, url] of items) {
+  const card = document.createElement("div"); card.className = "card";
+  const h = document.createElement("strong"); h.textContent = label;
+  const q = document.createElement("div"); q.className = "qr";
+  card.append(h, q); $("qrs").append(card);
+  new QRCode(q, { text: url, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
+}
+
+// Auth + tally
+$("lf").addEventListener("submit", async e => {
+  e.preventDefault(); $("lmsg").textContent = "";
+  try { await signInWithEmailAndPassword(auth, $("em").value, $("pw").value); }
+  catch { $("lmsg").textContent = "Sign-in failed. Check your email and password."; }
+});
+$("out").onclick = () => signOut(auth);
+
+onAuthStateChanged(auth, async user => {
+  $("login").classList.toggle("hidden", !!user);
+  $("report").classList.toggle("hidden", !user);
+  if (user) await loadTally();
+});
+
+function row(tbody, cells) {
+  const tr = document.createElement("tr");
+  for (const c of cells) { const td = document.createElement("td"); td.textContent = c; tr.append(td); }
+  tbody.append(tr);
+}
+
+async function loadTally() {
+  const [ps, vs] = await Promise.all([getDocs(collection(db, "participants")), getDocs(collection(db, "visits"))]);
+  const perAgency = {}, perPerson = {};
+  vs.forEach(d => {
+    const { pid, agency } = d.data();
+    perAgency[agency] = (perAgency[agency] || 0) + 1;
+    perPerson[pid] = (perPerson[pid] || 0) + 1;
+  });
+  const total = Object.keys(AGENCIES).length;
+  $("np").textContent = ps.size;
+  $("nall").textContent = Object.values(perPerson).filter(n => n >= total).length;
+  $("ag").textContent = ""; $("pt").textContent = "";
+  for (const [c, n] of Object.entries(AGENCIES)) row($("ag"), [n, perAgency[c] || 0]);
+  ps.forEach(d => { const p = d.data(); row($("pt"), [d.id, p.name, p.mobile, `${perPerson[d.id] || 0} / ${total}`]); });
+}
+</script>
+</body>
+</html>

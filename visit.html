@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visit recorded</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1 id="title">Checking in…</h1>
+  <p class="sub" id="sub"></p>
+
+  <div class="card" id="tally" hidden>
+    <strong id="count"></strong>
+    <div class="bar"><i id="fill" style="width:0"></i></div>
+    <ul class="list" id="list"></ul>
+  </div>
+  <div class="msg" id="err" role="alert"></div>
+</main>
+
+<script type="module">
+import { db, AGENCIES, doc, getDoc, setDoc, serverTimestamp } from "./firebase.js";
+
+const $ = id => document.getElementById(id);
+const agency = (new URLSearchParams(location.search).get("agency") || "").toUpperCase();
+const pid = localStorage.getItem("participantId");
+
+async function visited(code) {
+  return (await getDoc(doc(db, "visits", `${pid}_${code}`))).exists();
+}
+
+async function renderTally() {
+  const codes = Object.keys(AGENCIES);
+  const flags = await Promise.all(codes.map(visited));
+  const n = flags.filter(Boolean).length;
+  $("count").textContent = `${n} of ${codes.length} agencies visited`;
+  $("fill").style.width = `${(n / codes.length) * 100}%`;
+  const ul = $("list"); ul.textContent = "";
+  codes.forEach((c, i) => {
+    const li = document.createElement("li");
+    const a = document.createElement("span"); a.textContent = AGENCIES[c];
+    const s = document.createElement("span");
+    s.textContent = flags[i] ? "Visited" : "Not yet";
+    s.className = flags[i] ? "done" : "todo";
+    li.append(a, s); ul.append(li);
+  });
+  $("tally").hidden = false;
+}
+
+(async () => {
+  if (!AGENCIES[agency]) {
+    $("title").textContent = "Unknown QR code";
+    $("err").textContent = "This QR code isn't linked to a listed agency. Ask the staff at the booth.";
+    return;
+  }
+  if (!pid) {
+    location.replace(`register.html?next=${encodeURIComponent(location.href)}`);
+    return;
+  }
+  try {
+    // Make sure the saved code still belongs to a real participant.
+    if (!(await getDoc(doc(db, "participants", pid))).exists()) {
+      localStorage.removeItem("participantId");
+      location.replace(`register.html?next=${encodeURIComponent(location.href)}`);
+      return;
+    }
+    if (await visited(agency)) {
+      $("title").textContent = `Already recorded at ${AGENCIES[agency]}`;
+      $("sub").textContent = "No need to scan this one again.";
+    } else {
+      await setDoc(doc(db, "visits", `${pid}_${agency}`), {
+        pid, agency, ts: serverTimestamp(),
+      });
+      $("title").textContent = `Visit recorded: ${AGENCIES[agency]}`;
+      $("sub").textContent = `Participant code ${pid}`;
+    }
+    await renderTally();
+  } catch (e) {
+    console.error(e);
+    $("title").textContent = "Couldn't record your visit";
+    $("err").textContent = "Check your connection and scan the QR code again.";
+  }
+})();
+</script>
+</body>
+</html>

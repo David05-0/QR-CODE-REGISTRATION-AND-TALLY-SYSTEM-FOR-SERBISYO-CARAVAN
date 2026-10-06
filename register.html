@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Register</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Register</h1>
+  <p class="sub">Register once, then scan each agency's QR code to record your visit.</p>
+
+  <form id="reg" class="card">
+    <label for="name">Full name</label>
+    <input id="name" required autocomplete="name">
+    <label for="mobile">Mobile number</label>
+    <input id="mobile" type="tel" required inputmode="tel" autocomplete="tel">
+    <label for="org">Barangay or organization <span style="font-weight:400">(optional)</span></label>
+    <input id="org">
+    <button class="full" id="go">Register</button>
+    <div class="msg" id="msg" role="alert"></div>
+  </form>
+
+  <h2>Already registered?</h2>
+  <form id="rec" class="card">
+    <label for="code">Your participant code</label>
+    <input id="code" autocapitalize="characters" placeholder="e.g. K7M3QX">
+    <button class="full ghost" type="submit">Continue with this code</button>
+    <div class="msg" id="rmsg" role="alert"></div>
+  </form>
+
+  <div id="done" class="card hidden">
+    <p class="ok"><strong>You're registered.</strong></p>
+    <p>Your participant code (save or screenshot it):</p>
+    <div class="code" id="mycode"></div>
+    <button class="full" id="next">Continue</button>
+  </div>
+</main>
+
+<script type="module">
+import { db, doc, setDoc, getDoc, serverTimestamp } from "./firebase.js";
+
+const params = new URLSearchParams(location.search);
+const next = params.get("next");
+const $ = id => document.getElementById(id);
+
+// Safe: only allow returning to a page on this same site.
+function goNext() {
+  try {
+    const u = new URL(next, location.href);
+    if (u.origin === location.origin) return (location.href = u.href);
+  } catch {}
+  location.href = "visit.html";
+}
+
+function newCode() {
+  const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O/1/I/L
+  let s = "";
+  for (const n of crypto.getRandomValues(new Uint8Array(6))) s += chars[n % chars.length];
+  return s;
+}
+
+$("reg").addEventListener("submit", async e => {
+  e.preventDefault();
+  $("go").disabled = true; $("msg").textContent = "";
+  try {
+    const pid = newCode();
+    await setDoc(doc(db, "participants", pid), {
+      name: $("name").value.trim(),
+      mobile: $("mobile").value.trim(),
+      org: $("org").value.trim(),
+      createdAt: serverTimestamp(),
+    });
+    localStorage.setItem("participantId", pid);
+    $("reg").classList.add("hidden"); $("rec").classList.add("hidden");
+    document.querySelector("h2").classList.add("hidden");
+    $("mycode").textContent = pid;
+    $("done").classList.remove("hidden");
+    $("next").onclick = goNext;
+  } catch (err) {
+    console.error(err);
+    $("msg").textContent = "Registration failed. Check your connection and try again.";
+    $("go").disabled = false;
+  }
+});
+
+$("rec").addEventListener("submit", async e => {
+  e.preventDefault();
+  const pid = $("code").value.trim().toUpperCase();
+  $("rmsg").textContent = "";
+  try {
+    const snap = pid && await getDoc(doc(db, "participants", pid));
+    if (!snap || !snap.exists()) { $("rmsg").textContent = "Code not found. Check it and try again."; return; }
+    localStorage.setItem("participantId", pid);
+    goNext();
+  } catch (err) {
+    console.error(err);
+    $("rmsg").textContent = "Could not check the code. Try again.";
+  }
+});
+</script>
+</body>
+</html>
