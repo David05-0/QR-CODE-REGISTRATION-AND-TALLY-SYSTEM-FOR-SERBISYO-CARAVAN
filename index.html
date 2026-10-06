@@ -140,6 +140,7 @@ nav a:hover{background:var(--brand);color:#fff}
       <span class="noprint"><span class="live" id="live">&#9679; Live</span> &nbsp; <select id="rsel" aria-label="Round to show"></select> <button class="ghost sm" id="reset">Start new round</button> <button class="ghost sm" id="del">Delete round</button></span>
     </div>
     <p class="sub noprint">"Start new round" restarts the tally from zero and keeps earlier rounds, which you can view from the dropdown. "Delete round" permanently removes the round currently selected in the dropdown.</p>
+    <p class="msg" id="amsg" role="alert" style="margin:0 0 12px"></p>
     <div class="stats">
       <div class="stat"><b id="nv">0</b><span>Total visits</span></div>
       <div class="stat"><b id="np">0</b><span>Participants with a visit</span></div>
@@ -412,20 +413,21 @@ function admin() {
     el.add(new Option("All rounds", "all"));
     el.value = sel;
   };
+  const say = (t, good) => { $("amsg").textContent = t; $("amsg").className = "msg" + (good ? " ok" : ""); };
   $("rsel").onchange = e => { sel = e.target.value; refresh(); };
   $("reset").onclick = async () => {
-    if (prompt(`Start round ${cur + 1}? The tally restarts from zero.\nRound ${cur} data is kept (not deleted) and stays in the dropdown.\n\nType NEW to confirm.`) !== "NEW") return;
-    $("reset").disabled = true; $("aerr").textContent = "";
-    try { await setDoc(doc(db, "config", "round"), { n: cur + 1 }); sel = "cur"; }
-    catch (e) { console.error(e); $("aerr").textContent = "Could not start a new round. Check the Firestore rules."; }
+    if (prompt(`Start round ${cur + 1}? The tally restarts from zero.\nRound ${cur} data is kept (not deleted) and stays in the dropdown.\n\nType NEW to confirm.`) !== "NEW") { say("Cancelled: nothing changed."); return; }
+    $("reset").disabled = true; say("");
+    try { await setDoc(doc(db, "config", "round"), { n: cur + 1 }); sel = "cur"; say(`Round ${cur + 1} started.`, true); }
+    catch (e) { console.error(e); say("Could not start a new round. Check that the latest Firestore rules are published."); }
     $("reset").disabled = false;
   };
   $("del").onclick = async () => {
-    $("aerr").textContent = "";
-    if (sel === "all") { $("aerr").textContent = "Pick a single round in the dropdown to delete."; return; }
+    say("");
+    if (sel === "all") { say("Pick a single round in the dropdown to delete."); return; }
     const r = sel === "cur" ? cur : Number(sel);
     const n = all.filter(v => (v.round ?? 1) === r).length;
-    if (prompt(`Permanently delete Round ${r}? This removes ${n} visit record(s) and cannot be undone.\n\nType DELETE ROUND ${r} to confirm.`) !== `DELETE ROUND ${r}`) return;
+    if (prompt(`Permanently delete Round ${r}? This removes ${n} visit record(s) and cannot be undone.\n\nType DELETE ROUND ${r} to confirm.`) !== `DELETE ROUND ${r}`) { say("Cancelled: the text did not match, so nothing was deleted."); return; }
     $("del").disabled = true;
     try {
       const snap = await getDocs(collection(db, "visits"));
@@ -436,11 +438,12 @@ function admin() {
         await b.commit();
       }
       sel = "cur";
+      say(`Deleted ${docs.length} record(s) from Round ${r}.`, true);
     } catch (e) {
       console.error(e);
-      $("aerr").textContent = e.code === "permission-denied"
-        ? "Delete is locked. In Firebase, create the document settings/admin with deleteEnabled = true, then try again."
-        : "Delete failed. Check your connection and try again.";
+      say(e.code === "permission-denied"
+        ? "Delete is locked, so nothing was deleted. In Firebase, create the document settings/admin with deleteEnabled = true (and make sure the latest rules are published), then try again."
+        : "Delete failed. Check your connection and try again.");
     }
     $("del").disabled = false;
   };
