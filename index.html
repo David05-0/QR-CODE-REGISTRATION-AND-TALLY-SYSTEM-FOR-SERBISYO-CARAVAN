@@ -55,6 +55,13 @@ button:disabled{opacity:.55;cursor:default}
 .full{width:100%;margin-top:20px}
 .msg{margin-top:12px;color:var(--bad);min-height:1.2em;font-weight:600}
 .ok{color:var(--ok)}
+.upl{display:flex;align-items:center;gap:10px;margin:14px 0;font-weight:700}
+.upl.busy::before{content:"";flex:none;width:20px;height:20px;border:3px solid var(--line);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
+.upl.done{color:var(--ok);font-size:1.1rem}
+.upl.done::before{content:"\2714";flex:none;display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--ok);color:#fff;font-size:.85rem}
+.hero .upl{color:#fff}
+.hero .upl.busy::before{border-color:rgba(255,255,255,.3);border-top-color:var(--gold)}
+@keyframes spin{to{transform:rotate(360deg)}}
 .code{font:800 2rem/1 var(--display);letter-spacing:.14em;text-align:center;color:var(--blue);margin:10px 0 14px;padding:18px 10px;border:2px dashed var(--gold);background:var(--gold-soft);border-radius:12px}
 .passport{display:flex;align-items:center;gap:16px}
 .ring{--p:0;flex:none;width:80px;height:80px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--gold) calc(var(--p)*1%),#E3E8F4 0)}
@@ -74,7 +81,7 @@ button:disabled{opacity:.55;cursor:default}
 .stamp .nm{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .stamp.now .seal{animation:press .6s .3s cubic-bezier(.2,1.4,.4,1) both}
 @keyframes press{0%{transform:scale(1.7) rotate(-16deg);opacity:0}100%{opacity:1}}
-@media(prefers-reduced-motion:reduce){.stamp.now .seal{animation:none}html{scroll-behavior:auto}}
+@media(prefers-reduced-motion:reduce){.stamp.now .seal{animation:none}.upl.busy::before{animation:none}html{scroll-behavior:auto}}
 nav{display:flex;gap:8px;flex-wrap:wrap;margin-top:20px}
 nav a{padding:8px 16px;border-radius:999px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.12);color:#fff;text-decoration:none;font-weight:600;font-size:.95rem}
 nav a:hover{background:var(--gold);border-color:var(--gold);color:var(--ink)}
@@ -167,7 +174,7 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
     <p class="ok"><strong>You're registered.</strong></p>
     <p>Your participant code (save or screenshot it):</p>
     <div class="code" id="mycode"></div>
-    <p id="syncnote" hidden style="font-weight:600"></p>
+    <div id="syncnote" class="upl" hidden></div>
     <p id="afterMsg">Now scan an agency's QR code to record your visit.</p>
     <div id="closeRow" hidden>
       <p id="cdline">This site is closing in <strong id="cd">10</strong> seconds.</p>
@@ -183,6 +190,7 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
 <header class="hero"><div class="in">
   <h1 id="vtitle">Checking in…</h1>
   <p class="sub" id="vsub"></p>
+  <div class="upl" id="vupl" hidden></div>
 </div></header>
 <main class="pull">
   <div id="tally" hidden>
@@ -334,6 +342,13 @@ const queueBg = (item, jitter = 0) => {
   return item.qid;
 };
 const waitResult = (qid, ms) => new Promise(res => { const t0 = Date.now(), i = setInterval(() => { if (results[qid] || Date.now() - t0 > ms) { clearInterval(i); res(results[qid]); } }, 50); });
+// Live timer while uploading, then a check mark saying Uploaded.
+const trackUpload = (el, label) => {
+  const t0 = Date.now(); el.hidden = false; el.className = "upl busy";
+  const paint = () => { el.textContent = `${label}... ${Math.floor((Date.now() - t0) / 1000)}s`; };
+  paint(); const iv = setInterval(paint, 1000);
+  return whenSynced().then(() => { clearInterval(iv); el.className = "upl done"; el.textContent = "Uploaded"; });
+};
 const whenSynced = () => new Promise(res => { const i = setInterval(() => { if (!outbox().length) { clearInterval(i); res(); } else flush(); }, 250); });
 addEventListener("online", flush); setInterval(flush, 5000); flush();
 
@@ -410,11 +425,7 @@ function register() {
     if (!pending) { tick(); return; }
     // No signal: the registration is saved on this phone and uploads once online. Don't auto-close until it has.
     $("cdline").hidden = true;
-    $("syncnote").hidden = false;
-    $("syncnote").textContent = "Your registration is saved on this phone and is uploading. Keep this page open until it says Uploaded.";
-    whenSynced().then(() => {
-      $("syncnote").textContent = "Uploaded to the server. You're all set.";
-      $("syncnote").style.color = "var(--ok)";
+    trackUpload($("syncnote"), "Uploading, keep this page open").then(() => {
       if (!$("stay").hidden) { $("cdline").hidden = false; tick(); }
     }).catch(console.error);
   };
@@ -492,6 +503,7 @@ async function visit() {
 
     const fresh = !have.includes(agency); // the phone already knows what it has stamped
     const qid = queueBg(fresh ? { action: "visit", pid, agency } : { action: "check", pid });
+    const up = fresh ? trackUpload($("vupl"), "Uploading your stamp") : null;
     // Online: confirm with the sheet BEFORE showing anything, so a cleared registration never shows old stamps.
     if (navigator.onLine) { await waitResult(qid, 2500); if (!localStorage.getItem("participantId")) return; }
     if (!have.includes(agency)) have.push(agency);
@@ -499,9 +511,7 @@ async function visit() {
     $("vtitle").textContent = fresh ? `Visit recorded: ${AGENCIES[agency]}` : `Already recorded at ${AGENCIES[agency]}`;
     $("vsub").textContent = fresh ? `Participant code ${pid}` : "No need to scan this one again.";
     if (fresh) {
-      $("vsub").textContent = `Participant code ${pid}. Uploading...`;
-      whenSynced().then(() => {
-        $("vsub").textContent = `Participant code ${pid}. Uploaded.`;
+      up.then(() => {
         const r = results[qid]; // the sheet says which round it counted this in
         if (r && r.round && r.round !== round) {
           const o = st.stamps[r.round] = st.stamps[r.round] || [];
