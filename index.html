@@ -137,9 +137,9 @@ nav a:hover{background:var(--brand);color:#fff}
   <section class="noprint" id="s-tally">
     <div class="sec-head">
       <h2>3. Tally</h2>
-      <span class="noprint"><span class="live" id="live">&#9679; Live</span> &nbsp; <select id="rsel" aria-label="Round to show"></select> <button class="ghost sm" id="reset">Start new round</button></span>
+      <span class="noprint"><span class="live" id="live">&#9679; Live</span> &nbsp; <select id="rsel" aria-label="Round to show"></select> <button class="ghost sm" id="reset">Start new round</button> <button class="ghost sm" id="del">Delete round</button></span>
     </div>
-    <p class="sub noprint">"Start new round" restarts the tally from zero. Nothing is deleted: earlier rounds are kept and can be viewed from the dropdown.</p>
+    <p class="sub noprint">"Start new round" restarts the tally from zero and keeps earlier rounds, which you can view from the dropdown. "Delete round" permanently removes the round currently selected in the dropdown.</p>
     <div class="stats">
       <div class="stat"><b id="nv">0</b><span>Total visits</span></div>
       <div class="stat"><b id="np">0</b><span>Participants with a visit</span></div>
@@ -161,7 +161,7 @@ nav a:hover{background:var(--brand);color:#fff}
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, getDocs, onSnapshot, collection, serverTimestamp }
+import { getFirestore, doc, getDoc, setDoc, getDocs, onSnapshot, writeBatch, collection, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ===== CONFIG: edit these ===== */
@@ -405,8 +405,10 @@ function admin() {
     render(rows);
   };
   const fillSel = () => {
+    const rounds = [...new Set([cur, ...all.map(v => v.round ?? 1)])].sort((a, b) => b - a);
+    if (sel !== "cur" && sel !== "all" && !rounds.includes(Number(sel))) sel = "cur";
     const el = $("rsel"); el.textContent = "";
-    for (let i = cur; i >= 1; i--) el.add(new Option(i === cur ? `Round ${i} (current)` : `Round ${i}`, i === cur ? "cur" : String(i)));
+    for (const i of rounds) el.add(new Option(i === cur ? `Round ${i} (current)` : `Round ${i}`, i === cur ? "cur" : String(i)));
     el.add(new Option("All rounds", "all"));
     el.value = sel;
   };
@@ -418,9 +420,33 @@ function admin() {
     catch (e) { console.error(e); $("aerr").textContent = "Could not start a new round. Check the Firestore rules."; }
     $("reset").disabled = false;
   };
+  $("del").onclick = async () => {
+    $("aerr").textContent = "";
+    if (sel === "all") { $("aerr").textContent = "Pick a single round in the dropdown to delete."; return; }
+    const r = sel === "cur" ? cur : Number(sel);
+    const n = all.filter(v => (v.round ?? 1) === r).length;
+    if (prompt(`Permanently delete Round ${r}? This removes ${n} visit record(s) and cannot be undone.\n\nType DELETE ROUND ${r} to confirm.`) !== `DELETE ROUND ${r}`) return;
+    $("del").disabled = true;
+    try {
+      const snap = await getDocs(collection(db, "visits"));
+      const docs = snap.docs.filter(d => (d.data().round ?? 1) === r);
+      for (let i = 0; i < docs.length; i += 400) {
+        const b = writeBatch(db);
+        docs.slice(i, i + 400).forEach(d => b.delete(d.ref));
+        await b.commit();
+      }
+      sel = "cur";
+    } catch (e) {
+      console.error(e);
+      $("aerr").textContent = e.code === "permission-denied"
+        ? "Delete is locked. In Firebase, create the document settings/admin with deleteEnabled = true, then try again."
+        : "Delete failed. Check your connection and try again.";
+    }
+    $("del").disabled = false;
+  };
   const onErr = e => { console.error(e); $("live").textContent = "Offline"; $("aerr").textContent = "Could not load the tally. Check the Firestore rules."; };
   onSnapshot(doc(db, "config", "round"), s => { cur = s.exists() ? s.data().n : 1; fillSel(); refresh(); }, onErr);
-  onSnapshot(collection(db, "visits"), s => { all = s.docs.map(d => d.data()); refresh(); }, onErr);
+  onSnapshot(collection(db, "visits"), s => { all = s.docs.map(d => d.data()); fillSel(); refresh(); }, onErr);
 }
 </script>
 </body>
