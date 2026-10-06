@@ -260,7 +260,7 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, getDocs, getCountFromServer, query, where, onSnapshot, writeBatch, increment, collection, serverTimestamp }
+import { getFirestore, doc, getDoc, setDoc, getDocs, getCountFromServer, query, where, onSnapshot, orderBy, limit, writeBatch, increment, collection, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ===== CONFIG: edit these ===== */
@@ -457,6 +457,14 @@ async function visit() {
     };
     showStamps();
     $("tally").hidden = false;
+
+    // Live: follow the server so a delete or reset shows up on this phone without reloading.
+    const wipe = () => { localStorage.removeItem("participantId"); localStorage.removeItem("stampStore"); toRegister(); };
+    onSnapshot(doc(db, "participants", pid), s => { if (!s.exists()) wipe(); }, e => console.error(e));
+    onSnapshot(doc(db, "config", "round"), s => { if ((s.exists() ? s.data().n : 1) !== round) location.reload(); }, e => console.error(e));
+    onSnapshot(query(collection(db, "visits"), where("pid", "==", pid), where("round", "==", round)), s => {
+      have.length = 0; s.forEach(d => have.push(d.data().agency)); save(); showStamps();
+    }, e => console.error(e));
 
     // Rebuild the checklist from the server (for a new phone, or after data was cleared).
     $("resync").onclick = async () => {
@@ -719,11 +727,18 @@ function admin() {
       const refs = [...vs.docs, ...ps.docs].map(d => d.ref);
       refs.push(doc(db, "config", "registered"), doc(db, "config", "round"));
       await batchDelete(refs);
+      localStorage.removeItem("participantId"); localStorage.removeItem("stampStore");
       people = []; $("ptable").hidden = true; $("pcount").textContent = "";
       say(`Deleted everything: ${vs.size} visit(s) and ${ps.size} participant(s).`, true); sel = "cur"; resetDetail(); await loadStats();
     } catch (e) { console.error(e); say(lockedMsg(e)); }
     $("delall").disabled = false;
   };
+
+  // Live: any new/deleted visit, new registration or round change refreshes the tally within seconds.
+  let soonT; const soon = () => { clearTimeout(soonT); soonT = setTimeout(loadStats, 2500); };
+  const watch = q => { let first = true; onSnapshot(q, () => { if (first) { first = false; return; } soon(); }, e => console.error(e)); };
+  watch(doc(db, "config", "registered")); watch(doc(db, "config", "round"));
+  watch(query(collection(db, "visits"), orderBy("ts", "desc"), limit(1)));
 
   $("refresh").onclick = loadStats;
   $("psearch").oninput = renderPeople; $("pretry").onclick = loadPeople;
