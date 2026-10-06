@@ -35,8 +35,9 @@ h2{font:800 1.3rem/1.2 var(--display);letter-spacing:-.01em;margin:32px 0 8px}
 .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px}
 #reg,#tally .passport{box-shadow:0 14px 34px -14px rgba(11,47,122,.35)}
 label{display:block;font-weight:600;font-size:.95rem;margin:16px 0 6px}
-input{width:100%;padding:14px;font:inherit;border:1.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink)}
-input:focus{outline:none;border-color:var(--blue-2);box-shadow:0 0 0 3px rgba(20,64,154,.2)}
+input,.reg-select{width:100%;padding:14px;font:inherit;border:1.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink)}
+select.reg-select{padding:14px;font:inherit;border:1.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink)}
+input:focus,.reg-select:focus{outline:none;border-color:var(--blue-2);box-shadow:0 0 0 3px rgba(20,64,154,.2)}
 button{font:inherit;font-weight:700;padding:13px 20px;border:0;border-radius:12px;background:var(--blue);color:#fff;cursor:pointer;transition:background .15s}
 button:hover{background:var(--blue-2)}
 button.ghost{background:transparent;color:var(--blue);border:1.5px solid var(--blue)}
@@ -127,10 +128,26 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
   <form id="reg" class="card">
     <label for="name">Full name</label>
     <input id="name" required autocomplete="name">
+    <label for="address">Address</label>
+    <input id="address" required autocomplete="street-address">
     <label for="mobile">Mobile number</label>
     <input id="mobile" type="tel" required inputmode="tel" autocomplete="tel">
-    <label for="org">Barangay or organization <span style="font-weight:400">(optional)</span></label>
-    <input id="org">
+    <label for="ptype">I am an</label>
+    <select id="ptype" class="reg-select" required>
+      <option value="" selected disabled>Select one</option>
+      <option value="OFW">OFW</option>
+      <option value="Beneficiary">Beneficiary</option>
+    </select>
+    <div id="benFields" hidden>
+      <label for="ofwName">Name of OFW</label>
+      <input id="ofwName">
+      <label for="sector">OFW category</label>
+      <select id="sector" class="reg-select">
+        <option value="" selected disabled>Select one</option>
+        <option value="LB">LB (Land-based)</option>
+        <option value="SB">SB (Sea-based)</option>
+      </select>
+    </div>
     <button class="full" id="go">Register</button>
     <div class="msg" id="msg" role="alert"></div>
   </form>
@@ -170,7 +187,7 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
       <div><strong id="count"></strong><span class="small">Collect a stamp at every booth.</span></div>
     </div>
     <ul class="stamps" id="list"></ul>
-    <p style="text-align:center;margin-top:20px"><button class="ghost sm" id="resync">Refresh my stamps</button></p>
+    <p style="text-align:center;margin-top:20px"><button class="ghost sm" id="resync">Sync my stamps</button></p>
   </div>
   <div class="msg" id="verr" role="alert"></div>
 </main>
@@ -194,7 +211,7 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
 </div>
 <header class="hero wide"><div class="in">
   <h1 id="vh">QR codes and tally</h1>
-  <p class="sub" id="vsb">Print the QR codes and watch the tally update as people scan.</p>
+  <p class="sub" id="vsb">Print the QR codes and watch the tally fill in as phones sync.</p>
 </div></header>
 <main class="wide pull">
 
@@ -249,7 +266,7 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
     <button class="ghost sm" id="pretry" style="margin-bottom:12px">Load registrants</button>
     <div class="tablewrap">
       <table id="ptable" hidden>
-        <thead><tr><th>Code</th><th>Name</th><th>Mobile</th><th>Barangay / organization</th><th>Registered</th><th>Stamps</th></tr></thead>
+        <thead><tr><th>Code</th><th>Name</th><th>Address</th><th>Mobile</th><th>Type</th><th>Name of OFW</th><th>LB/SB</th><th>Registered</th><th>Stamps</th></tr></thead>
         <tbody id="pbody"></tbody>
       </table>
     </div>
@@ -260,7 +277,7 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, getDocs, getCountFromServer, query, where, onSnapshot, orderBy, limit, writeBatch, increment, collection, serverTimestamp }
+import { getFirestore, doc, getDoc, setDoc, getDocs, getCountFromServer, query, where, onSnapshot, deleteField, writeBatch, increment, collection, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ===== CONFIG: edit these ===== */
@@ -308,12 +325,15 @@ const codes = Object.keys(AGENCIES), TOTAL = codes.length;
 const REG_URL = BASE + "?page=register";
 const pid = localStorage.getItem("participantId");
 
-const BUILD = "build 2026-10-06 d";
+const BUILD = "build 2026-10-06 free3";
 { const t = document.createElement("div"); t.textContent = BUILD; t.style.cssText = "position:fixed;right:6px;bottom:4px;font:11px system-ui;color:#9AA7C4;pointer-events:none"; document.body.append(t); }
 const page = Q.get("page");
 if (page === "admin") { $("v-admin").hidden = false; admin(); }
 else if (Q.get("agency") && page !== "register") { $("v-visit").hidden = false; visit(); }
 else { $("v-register").hidden = false; register(); }
+
+/* A reset ("Delete ALL") changes config/round.epoch; phones holding an older epoch wipe themselves. */
+const getEpoch = async () => { try { const rs = await getDoc(doc(db, "config", "round")); return rs.exists() ? rs.data().epoch || 0 : 0; } catch { return 0; } };
 
 /* ---------- REGISTER ---------- */
 function register() {
@@ -351,18 +371,26 @@ function register() {
     return s;
   };
 
+  const syncType = () => {
+    const ben = $("ptype").value === "Beneficiary";
+    $("benFields").hidden = !ben; $("ofwName").required = ben; $("sector").required = ben;
+  };
+  $("ptype").addEventListener("change", syncType); syncType();
+
   $("reg").addEventListener("submit", async e => {
     e.preventDefault(); $("go").disabled = true; $("msg").textContent = "";
     try {
       const id = newCode();
       await setDoc(doc(db, "participants", id), {
-        name: $("name").value.trim(), mobile: $("mobile").value.trim(),
-        org: $("org").value.trim(), createdAt: serverTimestamp(),
+        name: $("name").value.trim(), address: $("address").value.trim(), mobile: $("mobile").value.trim(),
+        type: $("ptype").value,
+        ...($("ptype").value === "Beneficiary" ? { ofwName: $("ofwName").value.trim(), sector: $("sector").value } : {}),
+        createdAt: serverTimestamp(),
       });
       try { await setDoc(doc(db, "config", "registered"), { n: increment(1) }, { merge: true }); }
       catch (e) { console.error("registered counter", e); }
       localStorage.setItem("participantId", id);
-      localStorage.setItem("stampStore", JSON.stringify({ pid: id, vt: Date.now(), stamps: {} }));
+      localStorage.setItem("stampStore", JSON.stringify({ pid: id, vt: Date.now(), stamps: {}, sent: {}, epoch: await getEpoch() }));
       await finishUp(id);
     } catch (err) {
       console.error(err);
@@ -378,12 +406,12 @@ function register() {
       const snap = id && await getDoc(doc(db, "participants", id));
       if (!snap || !snap.exists()) { $("rmsg").textContent = "Code not found. Check it and try again."; return; }
       localStorage.setItem("participantId", id);
-      const stamps = {};
+      const stamps = {}, sent = {};
       try {
-        const vs = await getDocs(query(collection(db, "visits"), where("pid", "==", id)));
-        vs.forEach(d => { const v = d.data(), r = String(v.round ?? 1); (stamps[r] = stamps[r] || []).push(v.agency); });
+        const sd = await getDoc(doc(db, "stamps", id));
+        for (const [k, arr] of Object.entries(sd.exists() ? sd.data().st || {} : {})) { stamps[k.slice(1)] = [...arr]; sent[k.slice(1)] = [...arr]; }
       } catch (e) { console.error(e); }
-      localStorage.setItem("stampStore", JSON.stringify({ pid: id, vt: Date.now(), stamps }));
+      localStorage.setItem("stampStore", JSON.stringify({ pid: id, vt: Date.now(), stamps, sent, epoch: await getEpoch() }));
       await finishUp(id);
     } catch (err) { console.error(err); $("rmsg").textContent = "Could not check the code. Try again."; }
   });
@@ -401,44 +429,45 @@ async function visit() {
   }
   if (!pid) return toRegister();
 
-  // The phone remembers the checklist, but the server is always asked to record the scan.
+  // Free-plan design: a scan is saved on the phone at once (0 database calls). The phone sends all its
+  // stamps to the server in ONE write: on the first scan, then when 5 are waiting, hourly,
+  // when all are collected, or when "Sync my stamps" is pressed.
   let st = {};
   try { st = JSON.parse(localStorage.getItem("stampStore") || "{}"); } catch {}
   if (st.pid !== pid) st = { pid };
   const save = () => localStorage.setItem("stampStore", JSON.stringify(st));
+  const wipe = () => { localStorage.removeItem("participantId"); localStorage.removeItem("stampStore"); toRegister(); };
+  const GAP = 60 * 60000, MAXP = 5, CHK = 5 * 60000; // sync when 5 stamps wait (or hourly); reset-check every 5 min
 
   try {
-    // Every scan: confirm with the server that this person is still registered and which round is live
-    // (2 small reads). Stops stale phone data from showing old stamps after a reset or new round.
-    if (!(await getDoc(doc(db, "participants", pid))).exists()) {
-      localStorage.removeItem("participantId"); localStorage.removeItem("stampStore");
-      return toRegister();
-    }
-    const rs = await getDoc(doc(db, "config", "round"));
-    const round = rs.exists() ? rs.data().n : 1;
-    st.stamps = st.stamps || {};
-    let have = st.stamps[round];
-    // Rebuild the checklist from the server when this round isn't cached yet, or every ~10 minutes.
-    if (!have || Date.now() - (st.sync || 0) > 600000) {
-      have = [];
-      const vs = await getDocs(query(collection(db, "visits"), where("pid", "==", pid), where("round", "==", round)));
-      vs.forEach(d => have.push(d.data().agency));
-      st.stamps = { [round]: have }; st.sync = Date.now();
-    }
-
-    const ref = doc(db, "visits", `${pid}_${agency}_${round}`);
-    let fresh = true;
-    try {
-      await setDoc(ref, { pid, agency, round, ts: serverTimestamp() });
-    } catch (e) {
-      if (e.code !== "permission-denied") throw e;
-      if (!(await getDoc(ref)).exists()) throw e; // a real rules problem, not "already stamped"
-      fresh = false;
-    }
-    if (!have.includes(agency)) have.push(agency);
+    // Server check at most every 5 min (1 read): was everything reset? which round is live?
+    const check = async () => {
+      const rs = await getDoc(doc(db, "config", "round"));
+      const d = rs.exists() ? rs.data() : {};
+      if ((d.epoch || 0) !== (st.epoch || 0)) return false;
+      st.round = d.n ?? 1; st.vt = Date.now(); return true;
+    };
+    if (!st.vt || !st.round || Date.now() - st.vt > CHK) { if (!(await check())) return wipe(); }
+    const round = st.round;
+    st.stamps = st.stamps || {}; st.sent = st.sent || {};
+    const have = st.stamps[round] = st.stamps[round] || [];
+    const sent = st.sent[round] = st.sent[round] || [];
+    const fresh = !have.includes(agency);
+    if (fresh) have.push(agency);
+    const waiting = () => have.filter(c => !sent.includes(c)).length;
+    const flush = async () => {
+      await setDoc(doc(db, "stamps", pid), { st: { ["r" + round]: have }, u: serverTimestamp() }, { merge: true });
+      sent.length = 0; sent.push(...have); st.lastFlush = Date.now(); save();
+    };
     save();
-    $("vtitle").textContent = fresh ? `Visit recorded: ${AGENCIES[agency]}` : `Already recorded at ${AGENCIES[agency]}`;
-    $("vsub").textContent = fresh ? `Participant code ${pid}` : "No need to scan this one again.";
+    if (waiting() && (!st.lastFlush || Date.now() - st.lastFlush > GAP || waiting() >= MAXP || have.length >= TOTAL)) {
+      try { await flush(); } catch (e) { console.error(e); }
+    }
+    const info = () => {
+      $("vsub").textContent = `Participant code ${pid}` + (waiting() ? ` \u00b7 ${waiting()} stamp(s) will sync automatically` : "");
+    };
+    $("vtitle").textContent = fresh ? `Stamp collected: ${AGENCIES[agency]}` : `Already collected at ${AGENCIES[agency]}`;
+    info();
 
     const showStamps = () => {
       const flags = codes.map(c => have.includes(c));
@@ -460,21 +489,17 @@ async function visit() {
     showStamps();
     $("tally").hidden = false;
 
-    // Live: follow the server so a delete or reset shows up on this phone without reloading.
-    const wipe = () => { localStorage.removeItem("participantId"); localStorage.removeItem("stampStore"); toRegister(); };
-    onSnapshot(doc(db, "participants", pid), s => { if (!s.exists()) wipe(); }, e => console.error(e));
-    onSnapshot(doc(db, "config", "round"), s => { if ((s.exists() ? s.data().n : 1) !== round) location.reload(); }, e => console.error(e));
-    onSnapshot(query(collection(db, "visits"), where("pid", "==", pid), where("round", "==", round)), s => {
-      have.length = 0; s.forEach(d => have.push(d.data().agency)); save(); showStamps();
-    }, e => console.error(e));
-
-    // Rebuild the checklist from the server (for a new phone, or after data was cleared).
+    // Manual sync: confirm registration, merge in stamps already on the server, send anything waiting.
     $("resync").onclick = async () => {
       $("resync").disabled = true;
       try {
-        const vs = await getDocs(query(collection(db, "visits"), where("pid", "==", pid), where("round", "==", round)));
-        have.length = 0; vs.forEach(d => have.push(d.data().agency));
-        save(); showStamps();
+        if (!(await check())) return wipe();
+        if (st.round !== round) return location.reload();
+        const sd = await getDoc(doc(db, "stamps", pid));
+        const srv = sd.exists() ? ((sd.data().st || {})["r" + round] || []) : [];
+        srv.forEach(c => { if (!have.includes(c)) have.push(c); if (!sent.includes(c)) sent.push(c); });
+        if (waiting()) await flush();
+        save(); showStamps(); info();
       } catch (e) { console.error(e); }
       $("resync").disabled = false;
     };
@@ -522,19 +547,23 @@ function admin() {
     charts[id] = new Chart($(id), cfg);
   };
 
-  // Numbers come from cheap count queries (about 1 read each), refreshed every 30 seconds.
+  // Numbers come from cheap count queries (about 1 read each), refreshed about every 30 seconds while scans come in.
   let cur = 1, sel = "cur", counts = {}, total = 0, registered = 0, people = [], detail = null;
   const roundNow = () => (sel === "cur" ? cur : sel);
-  const visitsQ = (...f) => query(collection(db, "visits"), ...f);
-  const roundFilter = r => (r === "all" ? [] : [where("round", "==", Number(r))]);
+  // One small "stamps" document per participant; per-agency totals use cheap count queries.
+  const countFor = async (c, r) => {
+    const rs = r === "all" ? Array.from({ length: cur }, (_, i) => i + 1) : [Number(r)];
+    const res = await Promise.all(rs.map(x => getCountFromServer(query(collection(db, "stamps"), where(`st.r${x}`, "array-contains", c)))));
+    return res.reduce((a, x) => a + x.data().count, 0);
+  };
 
   const VIEWS = { all: ["s-reg", "s-agency", "s-tally"], reg: ["s-reg"], agency: ["s-agency"], tally: ["s-tally"] };
   const NAMES = { all: "Menu", reg: "Registration QR", agency: "Agency QR codes", tally: "Tally" };
   const TITLES = { all: "QR codes and tally", reg: "Registration QR", agency: "Agency QR codes", tally: "Tally" };
-  const SUBS = { all: "Print the QR codes and watch the tally update as people scan.",
+  const SUBS = { all: "Print the QR codes and watch the tally fill in as phones sync.",
     reg: "Post this where people first arrive. Everyone scans it once to register.",
     agency: "One QR code for each booth. Download or print them.",
-    tally: "Live numbers that update as people scan." };
+    tally: "Updates as phones sync (a few minutes behind). Press Refresh for the latest." };
   const menu = $("menu"), btn = $("menuBtn");
   const closeMenu = () => { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); };
   const showView = v => {
@@ -591,8 +620,8 @@ function admin() {
       registered = rg.exists() ? rg.data().n : 0;
       fillSel();
       const r = roundNow();
-      const res = await Promise.all(codes.map(c => getCountFromServer(visitsQ(where("agency", "==", c), ...roundFilter(r)))));
-      codes.forEach((c, i) => { counts[c] = res[i].data().count; });
+      const res = await Promise.all(codes.map(c => countFor(c, r)));
+      codes.forEach((c, i) => { counts[c] = res[i]; });
       total = Object.values(counts).reduce((a, b) => a + b, 0);
       paint();
       $("live").textContent = "Updated " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -609,16 +638,16 @@ function admin() {
   };
   $("detail").onclick = async () => {
     const r = roundNow();
-    if (!confirm(`This reads every visit record once (about ${total}). The free daily quota is 50,000 reads. Continue?`)) return;
+    if (!confirm(`This reads every participant's stamp record once (about ${registered}). The free daily quota is 50,000 reads. Continue?`)) return;
     $("detail").disabled = true; say("");
     try {
-      const snap = await getDocs(r === "all" ? collection(db, "visits") : visitsQ(...roundFilter(r)));
-      const per = {}, times = [], seen = new Set();
+      const snap = await getDocs(collection(db, "stamps"));
+      const per = {}, times = [];
       snap.forEach(d => {
-        const v = d.data(), k = `${v.pid}|${v.agency}|${v.round ?? 1}`;
-        if (seen.has(k)) return; seen.add(k);
-        per[v.pid] = (per[v.pid] || 0) + 1;
-        const t = v.ts?.toDate?.(); if (t) times.push(t);
+        const m = d.data().st || {}; let n = 0;
+        for (const [k, arr] of Object.entries(m)) if (r === "all" || k === "r" + r) n += new Set(arr).size;
+        if (!n) return; per[d.id] = n;
+        const t = d.data().u?.toDate?.(); if (t) times.push(t);
       });
       detail = { per, times };
       $("np").textContent = Object.keys(per).length;
@@ -631,7 +660,7 @@ function admin() {
         options: { scales: { x: { title: { display: true, text: "Agencies visited" } }, y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: "Participants" } } } } });
       times.sort((a, b) => a - b);
       const byDay = times.length && times[times.length - 1] - times[0] > 48 * 3600e3;
-      $("tt").textContent = byDay ? "Visits per day" : "Visits per hour";
+      $("tt").textContent = byDay ? "Participants by last sync (per day)" : "Participants by last sync (per hour)";
       const fmt = t => byDay ? t.toLocaleDateString([], { month: "short", day: "numeric" })
                              : t.toLocaleString([], { month: "short", day: "numeric", hour: "numeric" });
       const buckets = new Map(); times.forEach(t => buckets.set(fmt(t), (buckets.get(fmt(t)) || 0) + 1));
@@ -647,12 +676,12 @@ function admin() {
   const stampText = p => (detail ? `${detail.per[p.id] || 0} / ${TOTAL}` : "\u2014");
   const renderPeople = () => {
     const q = $("psearch").value.trim().toLowerCase();
-    const list = people.filter(p => !q || [p.id, p.name, p.mobile, p.org].some(x => String(x || "").toLowerCase().includes(q)));
+    const list = people.filter(p => !q || [p.id, p.name, p.address, p.mobile, p.type, p.ofwName, p.sector, p.org].some(x => String(x || "").toLowerCase().includes(q)));
     $("pbody").textContent = "";
     for (const p of list) {
       const tr = document.createElement("tr");
       const when = p.createdAt?.toDate?.();
-      const cells = [p.id, p.name, p.mobile, p.org || "",
+      const cells = [p.id, p.name, p.address || p.org || "", p.mobile, p.type || "", p.ofwName || "", p.sector || "",
         when ? when.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "", stampText(p)];
       for (const t of cells) { const td = document.createElement("td"); td.textContent = t; tr.append(td); }
       $("pbody").append(tr);
@@ -676,8 +705,8 @@ function admin() {
   };
   const csvCell = v => { let t = String(v ?? ""); if (/^[=+\-@\t\r]/.test(t)) t = "'" + t; return '"' + t.replace(/"/g, '""') + '"'; };
   $("pcsv").onclick = () => {
-    const rows = [["Code", "Name", "Mobile", "Barangay/organization", "Registered at", "Stamps (selected round)"],
-      ...people.map(p => [p.id, p.name, p.mobile, p.org || "", p.createdAt?.toDate?.().toLocaleString() || "", detail ? detail.per[p.id] || 0 : ""])];
+    const rows = [["Code", "Name", "Address", "Mobile", "Type", "Name of OFW", "LB/SB", "Registered at", "Stamps (selected round)"],
+      ...people.map(p => [p.id, p.name, p.address || p.org || "", p.mobile, p.type || "", p.ofwName || "", p.sector || "", p.createdAt?.toDate?.().toLocaleString() || "", detail ? detail.per[p.id] || 0 : ""])];
     const blob = new Blob(["\ufeff" + rows.map(r => r.map(csvCell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "registered-participants.csv"; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
@@ -689,7 +718,7 @@ function admin() {
     if (prompt(`Start round ${cur + 1}? The tally restarts from zero.\nRound ${cur} data is kept (not deleted) and stays in the dropdown.\n\nType NEW to confirm.`) !== "NEW") { say("Cancelled: nothing changed."); return; }
     $("reset").disabled = true; say("");
     try {
-      await setDoc(doc(db, "config", "round"), { n: cur + 1 });
+      await setDoc(doc(db, "config", "round"), { n: cur + 1 }, { merge: true });
       say(`Round ${cur + 1} started.`, true); sel = "cur"; resetDetail(); await loadStats();
     } catch (e) { console.error(e); say("Could not start a new round. Check that the latest Firestore rules are published."); }
     $("reset").disabled = false;
@@ -713,9 +742,13 @@ function admin() {
     if (prompt(`Permanently delete Round ${r}? This removes about ${total} visit record(s) and cannot be undone.\n\nType DELETE ROUND ${r} to confirm.`) !== `DELETE ROUND ${r}`) { say("Cancelled: the text did not match, so nothing was deleted."); return; }
     $("del").disabled = true;
     try {
-      const snap = await getDocs(visitsQ(where("round", "==", r)));
-      await batchDelete(snap.docs.map(d => d.ref));
-      say(`Deleted ${snap.size} record(s) from Round ${r}.`, true); sel = "cur"; resetDetail(); await loadStats();
+      const snap = await getDocs(query(collection(db, "stamps"), where(`st.r${r}`, "!=", null)));
+      for (let i = 0; i < snap.docs.length; i += 400) {
+        const b = writeBatch(db);
+        snap.docs.slice(i, i + 400).forEach(d => b.update(d.ref, { [`st.r${r}`]: deleteField() }));
+        await b.commit();
+      }
+      say(`Deleted Round ${r} stamps for ${snap.size} participant(s). Phones may keep showing them until they next sync.`, true); sel = "cur"; resetDetail(); await loadStats();
     } catch (e) { console.error(e); say(lockedMsg(e)); }
     $("del").disabled = false;
   };
@@ -725,33 +758,29 @@ function admin() {
     if (prompt(`Delete ALL records?\nThis permanently erases every visit (about ${total} shown), every registered participant, the registered counter, and all rounds. Participants will have to register again. It cannot be undone.\n\nType DELETE ALL to confirm.`) !== "DELETE ALL") { say("Cancelled: nothing was deleted."); return; }
     $("delall").disabled = true;
     try {
-      const [vs, ps] = await Promise.all([getDocs(collection(db, "visits")), getDocs(collection(db, "participants"))]);
-      const refs = [...vs.docs, ...ps.docs].map(d => d.ref);
-      refs.push(doc(db, "config", "registered"), doc(db, "config", "round"));
+      const [vs, ps, ss] = await Promise.all([getDocs(collection(db, "visits")), getDocs(collection(db, "participants")), getDocs(collection(db, "stamps"))]);
+      const refs = [...vs.docs, ...ps.docs, ...ss.docs].map(d => d.ref);
+      refs.push(doc(db, "config", "registered"));
       await batchDelete(refs);
+      await setDoc(doc(db, "config", "round"), { n: 1, epoch: Date.now() }); // tells every phone to reset
       localStorage.removeItem("participantId"); localStorage.removeItem("stampStore");
       people = []; $("ptable").hidden = true; $("pcount").textContent = "";
       // Verify with the server that nothing is left, instead of trusting the delete call.
       let left = 0, note = "";
       try { left += (await getCountFromServer(collection(db, "visits"))).data().count; } catch { note = " (could not verify visits)"; }
+      try { left += (await getCountFromServer(collection(db, "stamps"))).data().count; } catch { note += " (could not verify stamps)"; }
       try { left += (await getCountFromServer(collection(db, "participants"))).data().count; } catch { note += " (could not verify participants)"; }
       if (left) say(`Delete incomplete: ${left} record(s) still remain in the database. Check the Firestore rules and press Delete ALL again.`);
-      else say(`Deleted everything: ${vs.size} visit(s) and ${ps.size} participant(s). Verified empty.${note}`, true);
+      else say(`Deleted everything: ${ss.size} stamp record(s), ${vs.size} old visit(s) and ${ps.size} participant(s). Verified empty.${note}`, true);
       sel = "cur"; resetDetail(); await loadStats();
     } catch (e) { console.error(e); say(lockedMsg(e)); }
     $("delall").disabled = false;
   };
 
-  // Live: any new/deleted visit, new registration or round change refreshes the tally within seconds.
-  let soonT; const soon = () => { clearTimeout(soonT); soonT = setTimeout(loadStats, 2500); };
-  const watch = q => { let first = true; onSnapshot(q, () => { if (first) { first = false; return; } soon(); }, e => console.error(e)); };
-  watch(doc(db, "config", "registered")); watch(doc(db, "config", "round"));
-  watch(query(collection(db, "visits"), orderBy("ts", "desc"), limit(1)));
-
   $("refresh").onclick = loadStats;
   $("psearch").oninput = renderPeople; $("pretry").onclick = loadPeople;
   document.addEventListener("visibilitychange", () => { if (!document.hidden) loadStats(); });
-  setInterval(() => { if (!document.hidden) loadStats(); }, 30000);
+  setInterval(() => { if (!document.hidden) loadStats(); }, 300000);
   loadStats();
 }
 </script>
