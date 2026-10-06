@@ -324,19 +324,10 @@ function register() {
     // Browsers often refuse to close a tab the page didn't open itself.
     setTimeout(() => { $("closeRow").textContent = "You're all set. You can close this page now."; }, 400);
   };
+  // Registering never records a visit. A visit is only recorded when an agency QR code is scanned.
   const finishUp = async id => {
     const ag = nextUrl ? (new URL(nextUrl).searchParams.get("agency") || "").toUpperCase() : "";
-    let note = "";
-    if (AGENCIES[ag]) {
-      try {
-        const rs = await getDoc(doc(db, "config", "round"));
-        const round = rs.exists() ? rs.data().n : 1;
-        const ref = doc(db, "visits", `${id}_${ag}_${round}`);
-        if (!(await getDoc(ref)).exists()) await setDoc(ref, { pid: id, agency: ag, round, ts: serverTimestamp() });
-        note = `Your visit to ${AGENCIES[ag]} is recorded.`;
-      } catch (e) { console.error(e); note = `We couldn't record your visit to ${AGENCIES[ag]}. Scan its QR code again.`; }
-    }
-    showDone(id, note);
+    showDone(id, AGENCIES[ag] ? `Now scan the ${AGENCIES[ag]} QR code again to record your visit.` : "");
   };
   const showDone = (id, note) => {
     $("reg").hidden = true; $("recwrap").hidden = true;
