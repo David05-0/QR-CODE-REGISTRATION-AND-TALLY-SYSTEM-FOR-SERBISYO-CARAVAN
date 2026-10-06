@@ -6,6 +6,8 @@
 <title>QR Registration and Tally</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;600;700&display=swap">
@@ -326,13 +328,13 @@ const queue = async item => {
   return results[item.qid] || null;
 };
 // Saves on the phone and uploads in the background, starting at a random moment so a crowd does not hit the server together.
-const queueBg = (item, jitter = 300) => {
+const queueBg = (item, jitter = 0) => {
   item.qid = Math.random().toString(36).slice(2);
   setOut([...outbox(), item]); setTimeout(flush, Math.random() * jitter);
   return item.qid;
 };
-const waitResult = (qid, ms) => new Promise(res => { const t0 = Date.now(), i = setInterval(() => { if (results[qid] || Date.now() - t0 > ms) { clearInterval(i); res(results[qid]); } }, 100); });
-const whenSynced = () => new Promise(res => { const i = setInterval(() => { if (!outbox().length) { clearInterval(i); res(); } else flush(); }, 500); });
+const waitResult = (qid, ms) => new Promise(res => { const t0 = Date.now(), i = setInterval(() => { if (results[qid] || Date.now() - t0 > ms) { clearInterval(i); res(results[qid]); } }, 50); });
+const whenSynced = () => new Promise(res => { const i = setInterval(() => { if (!outbox().length) { clearInterval(i); res(); } else flush(); }, 250); });
 addEventListener("online", flush); setInterval(flush, 5000); flush();
 
 // CODE: "Display name" (up to 25). The code goes in the agency QR. Don't rename after printing.
@@ -377,6 +379,7 @@ else { $("v-register").hidden = false; register(); }
 
 /* ---------- REGISTER ---------- */
 function register() {
+  fetch(API, { mode: "no-cors" }).catch(() => {}); // wakes the Google script while the form is being filled in
   if (sessionStorage.getItem("wasReset")) { sessionStorage.removeItem("wasReset"); $("msg").textContent = "All records were cleared by the organizer. Please register again."; }
   const next = Q.get("next");
   let nextUrl = null;
