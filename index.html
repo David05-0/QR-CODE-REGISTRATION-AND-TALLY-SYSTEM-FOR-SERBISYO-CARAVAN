@@ -217,24 +217,26 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
   <section class="noprint" id="s-tally">
     <div class="sec-head">
       <h2>Tally</h2>
-      <span class="noprint"><span class="live" id="live">&#9679; Live</span> &nbsp; <select id="rsel" aria-label="Round to show"></select> <button class="ghost sm" id="reset">Start new round</button> <button class="ghost sm" id="del">Delete round</button> <button class="ghost sm danger" id="delall">Delete all records</button></span>
+      <span class="noprint"><span class="live" id="live">Loading…</span> <button class="ghost sm" id="refresh">Refresh</button> &nbsp; <select id="rsel" aria-label="Round to show"></select> <button class="ghost sm" id="reset">Start new round</button> <button class="ghost sm" id="del">Delete round</button> <button class="ghost sm danger" id="delall">Delete all records</button></span>
     </div>
     <p class="sub noprint">"Start new round" restarts the tally from zero and keeps earlier rounds, which you can view from the dropdown. "Delete round" permanently removes the round currently selected in the dropdown. "Delete all records" erases everything: all visits, all registrations, and the counters.</p>
     <p class="msg" id="amsg" role="alert" style="margin:0 0 12px"></p>
     <div class="stats">
       <div class="stat"><b id="nreg">0</b><span>Registered</span></div>
       <div class="stat"><b id="nv">0</b><span>Total visits</span></div>
-      <div class="stat"><b id="np">0</b><span>Participants with a visit</span></div>
-      <div class="stat"><b id="nall">0</b><span>Visited every agency</span></div>
-      <div class="stat"><b id="avg">0</b><span>Average agencies per participant</span></div>
+      <div class="stat"><b id="np">&mdash;</b><span>Participants with a visit</span></div>
+      <div class="stat"><b id="nall">&mdash;</b><span>Visited every agency</span></div>
+      <div class="stat"><b id="avg">0</b><span>Average agencies per registered person</span></div>
       <div class="stat"><b id="top">-</b><span id="topl">Most visited</span></div>
       <div class="stat"><b id="low">-</b><span id="lowl">Least visited</span></div>
     </div>
+    <p class="sub noprint" style="margin:0 0 6px">Numbers refresh every 2 minutes and use very little of the free daily quota. The detailed report reads every visit once to fill in the per-person numbers and charts.</p>
+    <p class="noprint" style="margin:0 0 16px"><button class="ghost sm" id="detail">Run detailed report</button></p>
     <div class="chart"><h3>Visits per agency</h3><div class="box" id="abox"><canvas id="cAgency"></canvas></div></div>
-    <div class="chart"><h3>Participants by number of agencies visited</h3><div class="box"><canvas id="cDist"></canvas></div></div>
-    <div class="chart"><h3 id="tt">Visits over time</h3><div class="box"><canvas id="cTime"></canvas></div></div>
+    <div class="chart" id="chDist" hidden><h3>Participants by number of agencies visited</h3><div class="box"><canvas id="cDist"></canvas></div></div>
+    <div class="chart" id="chTime" hidden><h3 id="tt">Visits over time</h3><div class="box"><canvas id="cTime"></canvas></div></div>
     <table>
-      <thead><tr><th>Agency</th><th>Visits</th><th>% of participants</th></tr></thead>
+      <thead><tr><th>Agency</th><th>Visits</th><th>% of registered</th></tr></thead>
       <tbody id="ag"></tbody>
     </table>
     <h2>Who registered <span id="pcount" style="color:var(--muted);font-weight:600"></span></h2>
@@ -243,9 +245,9 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
       <button class="ghost sm" id="pcsv">Download CSV</button>
     </div>
     <div class="msg" id="pmsg" role="alert" style="margin:0 0 10px"></div>
-    <button class="ghost sm" id="pretry" hidden style="margin-bottom:12px">Try again</button>
+    <button class="ghost sm" id="pretry" style="margin-bottom:12px">Load registrants</button>
     <div class="tablewrap">
-      <table id="ptable">
+      <table id="ptable" hidden>
         <thead><tr><th>Code</th><th>Name</th><th>Mobile</th><th>Barangay / organization</th><th>Registered</th><th>Stamps</th></tr></thead>
         <tbody id="pbody"></tbody>
       </table>
@@ -257,7 +259,7 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, getDocs, onSnapshot, writeBatch, increment, collection, serverTimestamp }
+import { getFirestore, doc, getDoc, setDoc, getDocs, getCountFromServer, query, where, onSnapshot, writeBatch, increment, collection, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ===== CONFIG: edit these ===== */
@@ -357,6 +359,7 @@ function register() {
       try { await setDoc(doc(db, "config", "registered"), { n: increment(1) }, { merge: true }); }
       catch (e) { console.error("registered counter", e); }
       localStorage.setItem("participantId", id);
+      localStorage.setItem("stampStore", JSON.stringify({ pid: id, verified: true, stamps: {} }));
       await finishUp(id);
     } catch (err) {
       console.error(err);
@@ -372,6 +375,12 @@ function register() {
       const snap = id && await getDoc(doc(db, "participants", id));
       if (!snap || !snap.exists()) { $("rmsg").textContent = "Code not found. Check it and try again."; return; }
       localStorage.setItem("participantId", id);
+      const stamps = {};
+      try {
+        const vs = await getDocs(query(collection(db, "visits"), where("pid", "==", id)));
+        vs.forEach(d => { const v = d.data(), r = String(v.round ?? 1); (stamps[r] = stamps[r] || []).push(v.agency); });
+      } catch (e) { console.error(e); }
+      localStorage.setItem("stampStore", JSON.stringify({ pid: id, verified: true, stamps }));
       await finishUp(id);
     } catch (err) { console.error(err); $("rmsg").textContent = "Could not check the code. Try again."; }
   });
@@ -381,8 +390,6 @@ function register() {
 async function visit() {
   const agency = (Q.get("agency") || "").toUpperCase();
   const toRegister = () => location.replace(`${REG_URL}&next=${encodeURIComponent(location.href)}`);
-  let round = 1;
-  const visited = async c => (await getDoc(doc(db, "visits", `${pid}_${c}_${round}`))).exists();
 
   if (!AGENCIES[agency]) {
     $("vtitle").textContent = "Unknown QR code";
@@ -390,18 +397,45 @@ async function visit() {
     return;
   }
   if (!pid) return toRegister();
+
+  // The phone remembers what it needs, so a scan costs at most one or two reads.
+  let st = {};
+  try { st = JSON.parse(localStorage.getItem("stampStore") || "{}"); } catch {}
+  if (st.pid !== pid) st = { pid };
+  const save = () => localStorage.setItem("stampStore", JSON.stringify(st));
+
   try {
-    if (!(await getDoc(doc(db, "participants", pid))).exists()) { localStorage.removeItem("participantId"); return toRegister(); }
-    const rs = await getDoc(doc(db, "config", "round")); round = rs.exists() ? rs.data().n : 1;
-    if (await visited(agency)) {
+    if (!st.verified) {
+      if (!(await getDoc(doc(db, "participants", pid))).exists()) {
+        localStorage.removeItem("participantId"); localStorage.removeItem("stampStore");
+        return toRegister();
+      }
+      st.verified = true;
+    }
+    if (!st.round || Date.now() - st.round.t > 600000) {
+      const rs = await getDoc(doc(db, "config", "round"));
+      st.round = { n: rs.exists() ? rs.data().n : 1, t: Date.now() };
+    }
+    const round = st.round.n;
+    st.stamps = st.stamps || {};
+    const have = st.stamps[round] = st.stamps[round] || [];
+
+    if (have.includes(agency)) {
       $("vtitle").textContent = `Already recorded at ${AGENCIES[agency]}`;
       $("vsub").textContent = "No need to scan this one again.";
     } else {
-      await setDoc(doc(db, "visits", `${pid}_${agency}_${round}`), { pid, agency, round, ts: serverTimestamp() });
+      try {
+        await setDoc(doc(db, "visits", `${pid}_${agency}_${round}`), { pid, agency, round, ts: serverTimestamp() });
+      } catch (e) {
+        if (e.code !== "permission-denied") throw e; // already stamped from another device
+      }
+      have.push(agency);
       $("vtitle").textContent = `Visit recorded: ${AGENCIES[agency]}`;
       $("vsub").textContent = `Participant code ${pid}`;
     }
-    const flags = await Promise.all(codes.map(visited));
+    save();
+
+    const flags = codes.map(c => have.includes(c));
     const n = flags.filter(Boolean).length;
     const pct = Math.round((n / TOTAL) * 100);
     $("count").textContent = `${n} of ${TOTAL} stamps collected`;
@@ -460,82 +494,12 @@ function admin() {
     charts[id] = new Chart($(id), cfg);
   };
 
-  function render(vs) {
-    $("aerr").textContent = "";
-    try {
-      const perAgency = Object.fromEntries(codes.map(c => [c, 0]));
-      const perPerson = {}, times = [];
-      vs.forEach(d => {
-        const { pid, agency, ts } = d;
-        if (agency in perAgency) perAgency[agency]++;
-        perPerson[pid] = (perPerson[pid] || 0) + 1;
-        const t = ts?.toDate?.(); if (t) times.push(t);
-      });
-      const people = Object.keys(perPerson).length;
-      const sorted = [...codes].sort((a, b) => perAgency[b] - perAgency[a]);
-      const last = sorted[sorted.length - 1];
+  // Numbers come from cheap count queries (about 1 read each), refreshed every 2 minutes.
+  let cur = 1, sel = "cur", counts = {}, total = 0, registered = 0, people = [], detail = null;
+  const roundNow = () => (sel === "cur" ? cur : sel);
+  const visitsQ = (...f) => query(collection(db, "visits"), ...f);
+  const roundFilter = r => (r === "all" ? [] : [where("round", "==", Number(r))]);
 
-      $("nv").textContent = vs.length;
-      $("np").textContent = people;
-      $("nall").textContent = Object.values(perPerson).filter(n => n >= TOTAL).length;
-      $("avg").textContent = people ? (vs.length / people).toFixed(1) : "0";
-      $("top").textContent = vs.length ? perAgency[sorted[0]] : "-";
-      $("topl").textContent = vs.length ? "Most visited: " + AGENCIES[sorted[0]] : "Most visited";
-      $("low").textContent = vs.length ? perAgency[last] : "-";
-      $("lowl").textContent = vs.length ? "Least visited: " + AGENCIES[last] : "Least visited";
-      for (const c of codes) countEls[c].textContent = `${perAgency[c]} visit${perAgency[c] === 1 ? "" : "s"}`;
-
-      $("ag").textContent = "";
-      for (const c of sorted) {
-        const tr = document.createElement("tr");
-        for (const t of [AGENCIES[c], perAgency[c], (people ? Math.round(perAgency[c] / people * 100) : 0) + "%"]) {
-          const td = document.createElement("td"); td.textContent = t; tr.append(td);
-        }
-        $("ag").append(tr);
-      }
-
-      $("abox").style.height = (60 + TOTAL * 26) + "px";
-      draw("cAgency", { type: "bar",
-        data: { labels: sorted.map(c => AGENCIES[c]), datasets: [{ data: sorted.map(c => perAgency[c]), backgroundColor: BRAND }] },
-        options: { indexAxis: "y", scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } } });
-
-      const dist = Array(TOTAL).fill(0);
-      Object.values(perPerson).forEach(n => dist[Math.min(n, TOTAL) - 1]++);
-      draw("cDist", { type: "bar",
-        data: { labels: dist.map((_, i) => String(i + 1)), datasets: [{ data: dist, backgroundColor: "#F2B705" }] },
-        options: { scales: { x: { title: { display: true, text: "Agencies visited" } }, y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: "Participants" } } } } });
-
-      times.sort((a, b) => a - b);
-      const byDay = times.length && times[times.length - 1] - times[0] > 48 * 3600e3;
-      $("tt").textContent = byDay ? "Visits per day" : "Visits per hour";
-      const fmt = t => byDay ? t.toLocaleDateString([], { month: "short", day: "numeric" })
-                             : t.toLocaleString([], { month: "short", day: "numeric", hour: "numeric" });
-      const buckets = new Map(); times.forEach(t => buckets.set(fmt(t), (buckets.get(fmt(t)) || 0) + 1));
-      draw("cTime", { type: "line",
-        data: { labels: [...buckets.keys()], datasets: [{ data: [...buckets.values()], borderColor: BRAND, backgroundColor: "rgba(11,47,122,.12)", fill: true, tension: .25 }] },
-        options: { scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
-    } catch (e) { console.error(e); $("aerr").textContent = "Could not load the tally. Check the Firestore rules."; }
-  }
-  let all = [], cur = 1, sel = "cur", people = [], lastRows = [], stopPeople = null;
-  const refresh = () => {
-    const r = sel === "cur" ? cur : sel;
-    const seen = new Set(), rows = [];
-    for (const v of all) {
-      const rd = v.round ?? 1;
-      if (r !== "all" && rd !== Number(r)) continue;
-      const k = `${rd}|${v.pid}|${v.agency}`;
-      if (!seen.has(k)) { seen.add(k); rows.push(v); }
-    }
-    lastRows = rows; render(rows); renderPeople();
-  };
-  const fillSel = () => {
-    const rounds = [...new Set([cur, ...all.map(v => v.round ?? 1)])].sort((a, b) => b - a);
-    if (sel !== "cur" && sel !== "all" && !rounds.includes(Number(sel))) sel = "cur";
-    const el = $("rsel"); el.textContent = "";
-    for (const i of rounds) el.add(new Option(i === cur ? `Round ${i} (current)` : `Round ${i}`, i === cur ? "cur" : String(i)));
-    el.add(new Option("All rounds", "all"));
-    el.value = sel;
-  };
   const VIEWS = { all: ["s-reg", "s-agency", "s-tally"], reg: ["s-reg"], agency: ["s-agency"], tally: ["s-tally"] };
   const NAMES = { all: "Menu", reg: "Registration QR", agency: "Agency QR codes", tally: "Tally" };
   const TITLES = { all: "QR codes and tally", reg: "Registration QR", agency: "Agency QR codes", tally: "Tally" };
@@ -558,106 +522,196 @@ function admin() {
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenu(); });
   showView("all");
   const say = (t, good) => { $("amsg").textContent = t; $("amsg").className = "msg" + (good ? " ok" : ""); };
-  $("rsel").onchange = e => { sel = e.target.value; refresh(); };
-  $("reset").onclick = async () => {
-    if (prompt(`Start round ${cur + 1}? The tally restarts from zero.\nRound ${cur} data is kept (not deleted) and stays in the dropdown.\n\nType NEW to confirm.`) !== "NEW") { say("Cancelled: nothing changed."); return; }
-    $("reset").disabled = true; say("");
-    try { await setDoc(doc(db, "config", "round"), { n: cur + 1 }); sel = "cur"; say(`Round ${cur + 1} started.`, true); }
-    catch (e) { console.error(e); say("Could not start a new round. Check that the latest Firestore rules are published."); }
-    $("reset").disabled = false;
+
+  const fillSel = () => {
+    const el = $("rsel"); el.textContent = "";
+    for (let i = cur; i >= 1; i--) el.add(new Option(i === cur ? `Round ${i} (current)` : `Round ${i}`, i === cur ? "cur" : String(i)));
+    el.add(new Option("All rounds", "all"));
+    el.value = sel;
   };
-  $("del").onclick = async () => {
-    say("");
-    if (sel === "all") { say("Pick a single round in the dropdown to delete."); return; }
-    const r = sel === "cur" ? cur : Number(sel);
-    const n = all.filter(v => (v.round ?? 1) === r).length;
-    if (prompt(`Permanently delete Round ${r}? This removes ${n} visit record(s) and cannot be undone.\n\nType DELETE ROUND ${r} to confirm.`) !== `DELETE ROUND ${r}`) { say("Cancelled: the text did not match, so nothing was deleted."); return; }
-    $("del").disabled = true;
-    try {
-      const snap = await getDocs(collection(db, "visits"));
-      const docs = snap.docs.filter(d => (d.data().round ?? 1) === r);
-      for (let i = 0; i < docs.length; i += 400) {
-        const b = writeBatch(db);
-        docs.slice(i, i + 400).forEach(d => b.delete(d.ref));
-        await b.commit();
+
+  const paint = () => {
+    const sorted = [...codes].sort((a, b) => counts[b] - counts[a]);
+    const last = sorted[sorted.length - 1];
+    $("nreg").textContent = registered;
+    $("nv").textContent = total;
+    $("avg").textContent = registered ? (total / registered).toFixed(1) : "0";
+    $("top").textContent = total ? counts[sorted[0]] : "-";
+    $("topl").textContent = total ? "Most visited: " + AGENCIES[sorted[0]] : "Most visited";
+    $("low").textContent = total ? counts[last] : "-";
+    $("lowl").textContent = total ? "Least visited: " + AGENCIES[last] : "Least visited";
+    for (const c of codes) countEls[c].textContent = `${counts[c]} visit${counts[c] === 1 ? "" : "s"}`;
+    $("ag").textContent = "";
+    for (const c of sorted) {
+      const tr = document.createElement("tr");
+      for (const t of [AGENCIES[c], counts[c], (registered ? Math.round(counts[c] / registered * 100) : 0) + "%"]) {
+        const td = document.createElement("td"); td.textContent = t; tr.append(td);
       }
-      sel = "cur";
-      say(`Deleted ${docs.length} record(s) from Round ${r}.`, true);
-    } catch (e) {
-      console.error(e);
-      say(e.code === "permission-denied"
-        ? "Delete is locked, so nothing was deleted. In Firebase, create the document settings/admin with deleteEnabled = true (and make sure the latest rules are published), then try again."
-        : "Delete failed. Check your connection and try again.");
+      $("ag").append(tr);
     }
-    $("del").disabled = false;
+    $("abox").style.height = (60 + TOTAL * 26) + "px";
+    draw("cAgency", { type: "bar",
+      data: { labels: sorted.map(c => AGENCIES[c]), datasets: [{ data: sorted.map(c => counts[c]), backgroundColor: BRAND }] },
+      options: { indexAxis: "y", scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } } });
   };
-  $("delall").onclick = async () => {
-    say("");
-    if (prompt(`Delete ALL records?\nThis permanently erases every visit (${all.length}), every registered participant, the registered counter, and all rounds. Participants will have to register again. It cannot be undone.\n\nType DELETE ALL to confirm.`) !== "DELETE ALL") { say("Cancelled: nothing was deleted."); return; }
-    $("delall").disabled = true;
+
+  async function loadStats() {
+    $("aerr").textContent = "";
     try {
-      const [vs, ps] = await Promise.all([getDocs(collection(db, "visits")), getDocs(collection(db, "participants"))]);
-      const refs = [...vs.docs, ...ps.docs].map(d => d.ref);
-      refs.push(doc(db, "config", "registered"), doc(db, "config", "round"));
-      for (let i = 0; i < refs.length; i += 400) {
-        const b = writeBatch(db);
-        refs.slice(i, i + 400).forEach(r => b.delete(r));
-        await b.commit();
-      }
-      sel = "cur";
-      say(`Deleted everything: ${vs.size} visit(s) and ${ps.size} participant(s).`, true);
+      const [rs, rg] = await Promise.all([getDoc(doc(db, "config", "round")), getDoc(doc(db, "config", "registered"))]);
+      cur = rs.exists() ? rs.data().n : 1;
+      registered = rg.exists() ? rg.data().n : 0;
+      fillSel();
+      const r = roundNow();
+      const res = await Promise.all(codes.map(c => getCountFromServer(visitsQ(where("agency", "==", c), ...roundFilter(r)))));
+      codes.forEach((c, i) => { counts[c] = res[i].data().count; });
+      total = Object.values(counts).reduce((a, b) => a + b, 0);
+      paint();
+      $("live").textContent = "Updated " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     } catch (e) {
-      console.error(e);
-      say(e.code === "permission-denied"
-        ? "Delete is locked, so nothing was deleted. In Firebase, set settings/admin deleteEnabled = true (and make sure the latest rules are published), then try again."
-        : "Delete failed. Check your connection and try again.");
+      console.error(e); $("live").textContent = "Offline";
+      $("aerr").textContent = "Could not load the tally. Check the Firestore rules and your connection.";
     }
-    $("delall").disabled = false;
+  }
+
+  // Detailed report: reads every visit once (on demand) for the per-person numbers and charts.
+  const resetDetail = () => {
+    detail = null; $("chDist").hidden = true; $("chTime").hidden = true;
+    $("np").textContent = "\u2014"; $("nall").textContent = "\u2014"; renderPeople();
   };
-  const stampsPer = () => { const m = {}; lastRows.forEach(v => { m[v.pid] = (m[v.pid] || 0) + 1; }); return m; };
+  $("detail").onclick = async () => {
+    const r = roundNow();
+    if (!confirm(`This reads every visit record once (about ${total}). The free daily quota is 50,000 reads. Continue?`)) return;
+    $("detail").disabled = true; say("");
+    try {
+      const snap = await getDocs(r === "all" ? collection(db, "visits") : visitsQ(...roundFilter(r)));
+      const per = {}, times = [], seen = new Set();
+      snap.forEach(d => {
+        const v = d.data(), k = `${v.pid}|${v.agency}|${v.round ?? 1}`;
+        if (seen.has(k)) return; seen.add(k);
+        per[v.pid] = (per[v.pid] || 0) + 1;
+        const t = v.ts?.toDate?.(); if (t) times.push(t);
+      });
+      detail = { per, times };
+      $("np").textContent = Object.keys(per).length;
+      $("nall").textContent = Object.values(per).filter(n => n >= TOTAL).length;
+      $("chDist").hidden = false; $("chTime").hidden = false;
+      const dist = Array(TOTAL).fill(0);
+      Object.values(per).forEach(n => dist[Math.min(n, TOTAL) - 1]++);
+      draw("cDist", { type: "bar",
+        data: { labels: dist.map((_, i) => String(i + 1)), datasets: [{ data: dist, backgroundColor: "#F2B705" }] },
+        options: { scales: { x: { title: { display: true, text: "Agencies visited" } }, y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: "Participants" } } } } });
+      times.sort((a, b) => a - b);
+      const byDay = times.length && times[times.length - 1] - times[0] > 48 * 3600e3;
+      $("tt").textContent = byDay ? "Visits per day" : "Visits per hour";
+      const fmt = t => byDay ? t.toLocaleDateString([], { month: "short", day: "numeric" })
+                             : t.toLocaleString([], { month: "short", day: "numeric", hour: "numeric" });
+      const buckets = new Map(); times.forEach(t => buckets.set(fmt(t), (buckets.get(fmt(t)) || 0) + 1));
+      draw("cTime", { type: "line",
+        data: { labels: [...buckets.keys()], datasets: [{ data: [...buckets.values()], borderColor: BRAND, backgroundColor: "rgba(11,47,122,.12)", fill: true, tension: .25 }] },
+        options: { scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
+      renderPeople();
+    } catch (e) { console.error(e); say("Could not load the detailed report. Check your connection and try again."); }
+    $("detail").disabled = false;
+  };
+
+  // Registrants: loaded only when you press the button.
+  const stampText = p => (detail ? `${detail.per[p.id] || 0} / ${TOTAL}` : "\u2014");
   const renderPeople = () => {
-    const per = stampsPer(), q = $("psearch").value.trim().toLowerCase();
+    const q = $("psearch").value.trim().toLowerCase();
     const list = people.filter(p => !q || [p.id, p.name, p.mobile, p.org].some(x => String(x || "").toLowerCase().includes(q)));
     $("pbody").textContent = "";
     for (const p of list) {
       const tr = document.createElement("tr");
       const when = p.createdAt?.toDate?.();
       const cells = [p.id, p.name, p.mobile, p.org || "",
-        when ? when.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "",
-        `${per[p.id] || 0} / ${TOTAL}`];
+        when ? when.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "", stampText(p)];
       for (const t of cells) { const td = document.createElement("td"); td.textContent = t; tr.append(td); }
       $("pbody").append(tr);
     }
   };
-  const watchPeople = () => {
-    stopPeople?.(); $("pmsg").textContent = ""; $("pretry").hidden = true;
-    stopPeople = onSnapshot(collection(db, "participants"), snap => {
+  const loadPeople = async () => {
+    $("pmsg").textContent = ""; $("pretry").disabled = true;
+    try {
+      const snap = await getDocs(collection(db, "participants"));
       people = snap.docs.map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (b.createdAt?.seconds ?? 9e15) - (a.createdAt?.seconds ?? 9e15));
-      $("ptable").hidden = false; $("pcount").textContent = `(${people.length})`; renderPeople();
-    }, e => {
-      console.error(e); people = []; renderPeople(); $("ptable").hidden = true; $("pcount").textContent = "";
+      $("ptable").hidden = false; $("pcount").textContent = `(${people.length})`;
+      $("pretry").textContent = "Refresh registrants"; renderPeople();
+    } catch (e) {
+      console.error(e); $("ptable").hidden = true; $("pcount").textContent = "";
       $("pmsg").textContent = e.code === "permission-denied"
-        ? "Registrant details are locked. In Firebase, set settings/admin: viewParticipants = true, then press Try again."
+        ? "Registrant details are locked. In Firebase, set settings/admin: viewParticipants = true, then press the button again."
         : "Could not load registrants. Check your connection.";
-      $("pretry").hidden = false;
-    });
+    }
+    $("pretry").disabled = false;
   };
   const csvCell = v => { let t = String(v ?? ""); if (/^[=+\-@\t\r]/.test(t)) t = "'" + t; return '"' + t.replace(/"/g, '""') + '"'; };
   $("pcsv").onclick = () => {
-    const per = stampsPer();
     const rows = [["Code", "Name", "Mobile", "Barangay/organization", "Registered at", "Stamps (selected round)"],
-      ...people.map(p => [p.id, p.name, p.mobile, p.org || "", p.createdAt?.toDate?.().toLocaleString() || "", per[p.id] || 0])];
+      ...people.map(p => [p.id, p.name, p.mobile, p.org || "", p.createdAt?.toDate?.().toLocaleString() || "", detail ? detail.per[p.id] || 0 : ""])];
     const blob = new Blob(["\ufeff" + rows.map(r => r.map(csvCell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "registered-participants.csv"; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
-  $("psearch").oninput = renderPeople; $("pretry").onclick = watchPeople;
-  const onErr = e => { console.error(e); $("live").textContent = "Offline"; $("aerr").textContent = "Could not load the tally. Check the Firestore rules."; };
-  onSnapshot(doc(db, "config", "round"), s => { cur = s.exists() ? s.data().n : 1; fillSel(); refresh(); }, onErr);
-  onSnapshot(collection(db, "visits"), s => { all = s.docs.map(d => d.data()); fillSel(); refresh(); }, onErr);
-  watchPeople();
-  onSnapshot(doc(db, "config", "registered"), s => { $("nreg").textContent = s.exists() ? s.data().n : 0; }, onErr);
+
+  $("rsel").onchange = e => { sel = e.target.value; resetDetail(); loadStats(); };
+
+  $("reset").onclick = async () => {
+    if (prompt(`Start round ${cur + 1}? The tally restarts from zero.\nRound ${cur} data is kept (not deleted) and stays in the dropdown.\n\nType NEW to confirm.`) !== "NEW") { say("Cancelled: nothing changed."); return; }
+    $("reset").disabled = true; say("");
+    try {
+      await setDoc(doc(db, "config", "round"), { n: cur + 1 });
+      say(`Round ${cur + 1} started.`, true); sel = "cur"; resetDetail(); await loadStats();
+    } catch (e) { console.error(e); say("Could not start a new round. Check that the latest Firestore rules are published."); }
+    $("reset").disabled = false;
+  };
+
+  const batchDelete = async refs => {
+    for (let i = 0; i < refs.length; i += 400) {
+      const b = writeBatch(db);
+      refs.slice(i, i + 400).forEach(r => b.delete(r));
+      await b.commit();
+    }
+  };
+  const lockedMsg = e => e.code === "permission-denied"
+    ? "Delete is locked, so nothing was deleted. In Firebase, set settings/admin deleteEnabled = true (and make sure the latest rules are published), then try again."
+    : "Delete failed. Check your connection and try again.";
+
+  $("del").onclick = async () => {
+    say("");
+    if (sel === "all") { say("Pick a single round in the dropdown to delete."); return; }
+    const r = sel === "cur" ? cur : Number(sel);
+    if (prompt(`Permanently delete Round ${r}? This removes about ${total} visit record(s) and cannot be undone.\n\nType DELETE ROUND ${r} to confirm.`) !== `DELETE ROUND ${r}`) { say("Cancelled: the text did not match, so nothing was deleted."); return; }
+    $("del").disabled = true;
+    try {
+      const snap = await getDocs(visitsQ(where("round", "==", r)));
+      await batchDelete(snap.docs.map(d => d.ref));
+      say(`Deleted ${snap.size} record(s) from Round ${r}.`, true); sel = "cur"; resetDetail(); await loadStats();
+    } catch (e) { console.error(e); say(lockedMsg(e)); }
+    $("del").disabled = false;
+  };
+
+  $("delall").onclick = async () => {
+    say("");
+    if (prompt(`Delete ALL records?\nThis permanently erases every visit (about ${total} shown), every registered participant, the registered counter, and all rounds. Participants will have to register again. It cannot be undone.\n\nType DELETE ALL to confirm.`) !== "DELETE ALL") { say("Cancelled: nothing was deleted."); return; }
+    $("delall").disabled = true;
+    try {
+      const [vs, ps] = await Promise.all([getDocs(collection(db, "visits")), getDocs(collection(db, "participants"))]);
+      const refs = [...vs.docs, ...ps.docs].map(d => d.ref);
+      refs.push(doc(db, "config", "registered"), doc(db, "config", "round"));
+      await batchDelete(refs);
+      people = []; $("ptable").hidden = true; $("pcount").textContent = "";
+      say(`Deleted everything: ${vs.size} visit(s) and ${ps.size} participant(s).`, true); sel = "cur"; resetDetail(); await loadStats();
+    } catch (e) { console.error(e); say(lockedMsg(e)); }
+    $("delall").disabled = false;
+  };
+
+  $("refresh").onclick = loadStats;
+  $("psearch").oninput = renderPeople; $("pretry").onclick = loadPeople;
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) loadStats(); });
+  setInterval(() => { if (!document.hidden) loadStats(); }, 120000);
+  loadStats();
 }
 </script>
 </body>
