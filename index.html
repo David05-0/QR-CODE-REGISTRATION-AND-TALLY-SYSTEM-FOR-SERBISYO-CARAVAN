@@ -308,6 +308,8 @@ const codes = Object.keys(AGENCIES), TOTAL = codes.length;
 const REG_URL = BASE + "?page=register";
 const pid = localStorage.getItem("participantId");
 
+const BUILD = "build 2026-10-06 d";
+{ const t = document.createElement("div"); t.textContent = BUILD; t.style.cssText = "position:fixed;right:6px;bottom:4px;font:11px system-ui;color:#9AA7C4;pointer-events:none"; document.body.append(t); }
 const page = Q.get("page");
 if (page === "admin") { $("v-admin").hidden = false; admin(); }
 else if (Q.get("agency") && page !== "register") { $("v-visit").hidden = false; visit(); }
@@ -729,7 +731,13 @@ function admin() {
       await batchDelete(refs);
       localStorage.removeItem("participantId"); localStorage.removeItem("stampStore");
       people = []; $("ptable").hidden = true; $("pcount").textContent = "";
-      say(`Deleted everything: ${vs.size} visit(s) and ${ps.size} participant(s).`, true); sel = "cur"; resetDetail(); await loadStats();
+      // Verify with the server that nothing is left, instead of trusting the delete call.
+      let left = 0, note = "";
+      try { left += (await getCountFromServer(collection(db, "visits"))).data().count; } catch { note = " (could not verify visits)"; }
+      try { left += (await getCountFromServer(collection(db, "participants"))).data().count; } catch { note += " (could not verify participants)"; }
+      if (left) say(`Delete incomplete: ${left} record(s) still remain in the database. Check the Firestore rules and press Delete ALL again.`);
+      else say(`Deleted everything: ${vs.size} visit(s) and ${ps.size} participant(s). Verified empty.${note}`, true);
+      sel = "cur"; resetDetail(); await loadStats();
     } catch (e) { console.error(e); say(lockedMsg(e)); }
     $("delall").disabled = false;
   };
