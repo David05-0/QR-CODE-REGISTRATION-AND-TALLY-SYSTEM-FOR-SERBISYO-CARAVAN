@@ -6,8 +6,6 @@
 <title>QR Registration and Tally</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<link rel="preconnect" href="https://script.google.com">
-<link rel="preconnect" href="https://script.googleusercontent.com">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;600;700&display=swap">
@@ -39,10 +37,6 @@ h2{font:800 1.3rem/1.2 var(--display);letter-spacing:-.01em;margin:32px 0 8px}
 label{display:block;font-weight:600;font-size:.95rem;margin:16px 0 6px}
 input{width:100%;padding:14px;font:inherit;border:1.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink)}
 input:focus{outline:none;border-color:var(--blue-2);box-shadow:0 0 0 3px rgba(20,64,154,.2)}
-.choice{display:flex;gap:10px;flex-wrap:wrap}
-.choice label{display:flex;align-items:center;gap:8px;flex:1;min-width:130px;margin:0;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;font-weight:600;cursor:pointer;background:#fff}
-.choice input{width:auto;margin:0;accent-color:var(--blue)}
-.choice label:has(input:checked){border-color:var(--blue);background:var(--gold-soft);color:var(--blue)}
 button{font:inherit;font-weight:700;padding:13px 20px;border:0;border-radius:12px;background:var(--blue);color:#fff;cursor:pointer;transition:background .15s}
 button:hover{background:var(--blue-2)}
 button.ghost{background:transparent;color:var(--blue);border:1.5px solid var(--blue)}
@@ -55,13 +49,6 @@ button:disabled{opacity:.55;cursor:default}
 .full{width:100%;margin-top:20px}
 .msg{margin-top:12px;color:var(--bad);min-height:1.2em;font-weight:600}
 .ok{color:var(--ok)}
-.upl{display:flex;align-items:center;gap:10px;margin:14px 0;font-weight:700}
-.upl.busy::before{content:"";flex:none;width:20px;height:20px;border:3px solid var(--line);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
-.upl.done{color:var(--ok);font-size:1.1rem}
-.upl.done::before{content:"\2714";flex:none;display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--ok);color:#fff;font-size:.85rem}
-.hero .upl{color:#fff}
-.hero .upl.busy::before{border-color:rgba(255,255,255,.3);border-top-color:var(--gold)}
-@keyframes spin{to{transform:rotate(360deg)}}
 .code{font:800 2rem/1 var(--display);letter-spacing:.14em;text-align:center;color:var(--blue);margin:10px 0 14px;padding:18px 10px;border:2px dashed var(--gold);background:var(--gold-soft);border-radius:12px}
 .passport{display:flex;align-items:center;gap:16px}
 .ring{--p:0;flex:none;width:80px;height:80px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--gold) calc(var(--p)*1%),#E3E8F4 0)}
@@ -81,7 +68,7 @@ button:disabled{opacity:.55;cursor:default}
 .stamp .nm{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .stamp.now .seal{animation:press .6s .3s cubic-bezier(.2,1.4,.4,1) both}
 @keyframes press{0%{transform:scale(1.7) rotate(-16deg);opacity:0}100%{opacity:1}}
-@media(prefers-reduced-motion:reduce){.stamp.now .seal{animation:none}.upl.busy::before{animation:none}html{scroll-behavior:auto}}
+@media(prefers-reduced-motion:reduce){.stamp.now .seal{animation:none}html{scroll-behavior:auto}}
 nav{display:flex;gap:8px;flex-wrap:wrap;margin-top:20px}
 nav a{padding:8px 16px;border-radius:999px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.12);color:#fff;text-decoration:none;font-weight:600;font-size:.95rem}
 nav a:hover{background:var(--gold);border-color:var(--gold);color:var(--ink)}
@@ -110,7 +97,7 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
 .people-tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:8px 0 10px}
 .people-tools input{flex:1;min-width:200px;width:auto;padding:10px 12px}
 .tablewrap{overflow-x:auto}
-#ptable{min-width:1000px}
+#ptable{min-width:680px}
 .topbar{position:sticky;top:0;z-index:50;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 16px;background:#071C4D;color:#fff;border-bottom:1px solid rgba(255,255,255,.14)}
 .topbar b{font:800 1.1rem var(--display)}
 .menuwrap{position:relative}
@@ -140,24 +127,10 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
   <form id="reg" class="card">
     <label for="name">Full name</label>
     <input id="name" required autocomplete="name">
-    <label for="address">Address</label>
-    <input id="address" required autocomplete="street-address" placeholder="Barangay, Municipality, Province">
     <label for="mobile">Mobile number</label>
     <input id="mobile" type="tel" required inputmode="tel" autocomplete="tel">
-    <label id="lbType">Are you an OFW or a beneficiary?</label>
-    <div class="choice" role="radiogroup" aria-labelledby="lbType">
-      <label><input type="radio" name="ptype" value="OFW" required> OFW</label>
-      <label><input type="radio" name="ptype" value="Beneficiary"> Beneficiary</label>
-    </div>
-    <label id="lbSector">Land-based (LB) or Sea-based (SB)?</label>
-    <div class="choice" role="radiogroup" aria-labelledby="lbSector">
-      <label><input type="radio" name="sector" value="LB" required> LB (Land-based)</label>
-      <label><input type="radio" name="sector" value="SB"> SB (Sea-based)</label>
-    </div>
-    <div id="ofwWrap" hidden>
-      <label for="ofwName">Name of OFW</label>
-      <input id="ofwName" autocomplete="off" placeholder="Full name of the OFW you are a beneficiary of">
-    </div>
+    <label for="org">Barangay or organization <span style="font-weight:400">(optional)</span></label>
+    <input id="org">
     <button class="full" id="go">Register</button>
     <div class="msg" id="msg" role="alert"></div>
   </form>
@@ -174,7 +147,6 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
     <p class="ok"><strong>You're registered.</strong></p>
     <p>Your participant code (save or screenshot it):</p>
     <div class="code" id="mycode"></div>
-    <div id="syncnote" class="upl" hidden></div>
     <p id="afterMsg">Now scan an agency's QR code to record your visit.</p>
     <div id="closeRow" hidden>
       <p id="cdline">This site is closing in <strong id="cd">10</strong> seconds.</p>
@@ -190,7 +162,6 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
 <header class="hero"><div class="in">
   <h1 id="vtitle">Checking in…</h1>
   <p class="sub" id="vsub"></p>
-  <div class="upl" id="vupl" hidden></div>
 </div></header>
 <main class="pull">
   <div id="tally" hidden>
@@ -260,7 +231,8 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
       <div class="stat"><b id="top">-</b><span id="topl">Most visited</span></div>
       <div class="stat"><b id="low">-</b><span id="lowl">Least visited</span></div>
     </div>
-    <p class="sub noprint" style="margin:0 0 6px">Numbers refresh every 2 minutes from your Google Sheet.</p>
+    <p class="sub noprint" style="margin:0 0 6px">Numbers refresh every 30 seconds and cost only a few cents a day. The detailed report reads every visit once to fill in the per-person numbers and charts.</p>
+    <p class="noprint" style="margin:0 0 16px"><button class="ghost sm" id="detail">Run detailed report</button></p>
     <div class="chart"><h3>Visits per agency</h3><div class="box" id="abox"><canvas id="cAgency"></canvas></div></div>
     <div class="chart" id="chDist" hidden><h3>Participants by number of agencies visited</h3><div class="box"><canvas id="cDist"></canvas></div></div>
     <div class="chart" id="chTime" hidden><h3 id="tt">Visits over time</h3><div class="box"><canvas id="cTime"></canvas></div></div>
@@ -270,13 +242,14 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
     </table>
     <h2>Who registered <span id="pcount" style="color:var(--muted);font-weight:600"></span></h2>
     <div class="people-tools">
-      <input id="psearch" type="search" placeholder="Search name, address, mobile, OFW name or code" aria-label="Search registrants">
+      <input id="psearch" type="search" placeholder="Search name, mobile, organization or code" aria-label="Search registrants">
       <button class="ghost sm" id="pcsv">Download CSV</button>
     </div>
     <div class="msg" id="pmsg" role="alert" style="margin:0 0 10px"></div>
+    <button class="ghost sm" id="pretry" style="margin-bottom:12px">Load registrants</button>
     <div class="tablewrap">
-      <table id="ptable">
-        <thead><tr><th>Code</th><th>Name</th><th>Address</th><th>Mobile</th><th>OFW / Beneficiary</th><th>LB / SB</th><th>Name of OFW</th><th>Registered</th><th>Stamps</th></tr></thead>
+      <table id="ptable" hidden>
+        <thead><tr><th>Code</th><th>Name</th><th>Mobile</th><th>Barangay / organization</th><th>Registered</th><th>Stamps</th></tr></thead>
         <tbody id="pbody"></tbody>
       </table>
     </div>
@@ -286,84 +259,19 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
 </div>
 
 <script type="module">
-/* ===== CONFIG: paste your Apps Script web app URL (see Code.gs) ===== */
-const API = "https://script.google.com/macros/s/AKfycbyJTjOnVZ19leUSuESf2qZx2yC4PC3bMI4OITs5mfWynkDzdKn9o2ED2Z_4Vx029N5qXQ/exec";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc, getDocs, getCountFromServer, query, where, onSnapshot, writeBatch, increment, collection, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// Lets the page open with no signal after it has been opened once online (see sw.js).
-if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(console.error);
-
-// Talks to the Google Sheet. Text/plain keeps it a simple request (no CORS preflight).
-const call = async (body, ms = 20000) => {
-  if (!/^https:\/\/script\.google\.com\/.+\/exec/.test(API)) throw new Error("NOLINK");
-  const c = new AbortController(), t = setTimeout(() => c.abort(), ms);
-  let text;
-  try { text = await (await fetch(API, { method: "POST", body: JSON.stringify(body), signal: c.signal })).text(); }
-  catch (e) { throw new Error(e.name === "AbortError" ? "TIMEOUT" : "NETWORK"); }
-  finally { clearTimeout(t); }
-  let j; try { j = JSON.parse(text); } catch {
-    const e = new Error("NOTJSON");
-    e.snippet = text.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>|<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 220);
-    console.error("Google replied with a page:", e.snippet); throw e;
-  }
-  if (j.error) { const e = new Error(j.error); e.server = true; e.permanent = ["Wrong PIN", "Unknown action"].includes(j.error); throw e; }
-  return j;
-};
-
-// OFFLINE: every registration/visit goes into a queue saved on the phone and is sent when there is signal.
-// The sheet ignores repeats, so retrying is safe.
-const outbox = () => { try { return JSON.parse(localStorage.getItem("outbox") || "[]"); } catch { return []; } };
-const setOut = a => localStorage.setItem("outbox", JSON.stringify(a));
-const results = {};
-// The organizer cleared all records: forget this registration and ask the person to register again.
-const onReset = () => {
-  for (const k of ["participantId", "stampStore", "epoch"]) localStorage.removeItem(k);
-  setOut([]); sessionStorage.setItem("wasReset", "1");
-  if (Q.get("agency") && Q.get("page") !== "register" && Q.get("page") !== "admin") location.replace(`${REG_URL}&next=${encodeURIComponent(location.href)}`);
-};
-let flushing = null;
-const flush = () => {
-  if (flushing) return flushing;
-  const run = (async () => {
-    try {
-      for (let q; (q = outbox()[0]);) {
-        try {
-          const r = results[q.qid] = await call(q.action === "visit" || q.action === "check" ? { ...q, epoch: localStorage.getItem("epoch") } : q);
-          if (r.reset) { onReset(); return; }
-          if (r.epoch != null && (q.action === "register" || !localStorage.getItem("epoch"))) localStorage.setItem("epoch", r.epoch);
-        }
-        // Only a request the sheet will never accept is dropped. Busy/lock/quota errors are retried, never lost.
-        catch (e) { if (!e.permanent) throw e; console.error("Rejected by the sheet, dropped:", e.message); }
-        setOut(outbox().slice(1));
-      }
-    } catch (e) { console.warn("Busy or no signal, will retry", e.message); setTimeout(flush, 1000 + Math.random() * 2000); }
-  })();
-  flushing = run;
-  run.finally(() => { if (flushing === run) flushing = null; }); // reset AFTER it is stored (the old code could stay "busy" forever)
-  return run;
-};
-// Returns the sheet's answer, or null if it is still waiting for signal.
-const queue = async item => {
-  item.qid = Math.random().toString(36).slice(2);
-  setOut([...outbox(), item]);
-  await Promise.race([flush().then(() => outbox().some(q => q.qid === item.qid) && flush()), new Promise(r => setTimeout(r, 3500))]);
-  return results[item.qid] || null;
-};
-// Saves on the phone and uploads in the background, starting at a random moment so a crowd does not hit the server together.
-const queueBg = (item, jitter = 0) => {
-  item.qid = Math.random().toString(36).slice(2);
-  setOut([...outbox(), item]); setTimeout(flush, Math.random() * jitter);
-  return item.qid;
-};
-const waitResult = (qid, ms) => new Promise(res => { const t0 = Date.now(), i = setInterval(() => { if (results[qid] || Date.now() - t0 > ms) { clearInterval(i); res(results[qid]); } }, 50); });
-// Live timer while uploading, then a check mark saying Uploaded.
-const trackUpload = (el, label) => {
-  const t0 = Date.now(); el.hidden = false; el.className = "upl busy";
-  const paint = () => { el.textContent = `${label}... ${Math.floor((Date.now() - t0) / 1000)}s`; };
-  paint(); const iv = setInterval(paint, 1000);
-  return whenSynced().then(() => { clearInterval(iv); el.className = "upl done"; el.textContent = "Uploaded"; });
-};
-const whenSynced = () => new Promise(res => { const i = setInterval(() => { if (!outbox().length) { clearInterval(i); res(); } else flush(); }, 250); });
-addEventListener("online", flush); setInterval(flush, 5000); flush();
+/* ===== CONFIG: edit these ===== */
+const db = getFirestore(initializeApp({
+  apiKey: "AIzaSyBzJrQdxfpQtA3_gflWm0nYiR-paELxqoI",
+  authDomain: "qr-code-registration-and-tally.firebaseapp.com",
+  projectId: "qr-code-registration-and-tally",
+  storageBucket: "qr-code-registration-and-tally.firebasestorage.app",
+  messagingSenderId: "1032895989894",
+  appId: "1:1032895989894:web:e939d849df02707f1da907",
+}));
 
 // CODE: "Display name" (up to 25). The code goes in the agency QR. Don't rename after printing.
 const AGENCIES = {
@@ -407,8 +315,6 @@ else { $("v-register").hidden = false; register(); }
 
 /* ---------- REGISTER ---------- */
 function register() {
-  fetch(API, { mode: "no-cors" }).catch(() => {}); // wakes the Google script while the form is being filled in
-  if (sessionStorage.getItem("wasReset")) { sessionStorage.removeItem("wasReset"); $("msg").textContent = "All records were cleared by the organizer. Please register again."; }
   const next = Q.get("next");
   let nextUrl = null;
   try { const u = new URL(next, location.href); if (u.origin === location.origin) nextUrl = u.href; } catch {}
@@ -422,11 +328,11 @@ function register() {
     setTimeout(() => { $("closeRow").textContent = "You're all set. You can close this page now."; }, 400);
   };
   // Registering never records a visit. A visit is only recorded when an agency QR code is scanned.
-  const finishUp = async (id, pending) => {
+  const finishUp = async id => {
     const ag = nextUrl ? (new URL(nextUrl).searchParams.get("agency") || "").toUpperCase() : "";
-    showDone(id, AGENCIES[ag] ? `Now scan the ${AGENCIES[ag]} QR code again to record your visit.` : "", pending);
+    showDone(id, AGENCIES[ag] ? `Now scan the ${AGENCIES[ag]} QR code again to record your visit.` : "");
   };
-  const showDone = (id, note, pending) => {
+  const showDone = (id, note) => {
     $("reg").hidden = true; $("recwrap").hidden = true;
     $("mycode").textContent = id; $("done").hidden = false;
     if (note) $("afterMsg").textContent = note;
@@ -435,12 +341,7 @@ function register() {
     $("stay").onclick = () => { clearTimeout(timer); $("cdline").hidden = true; $("stay").hidden = true; };
     let t = 10;
     const tick = () => { $("cd").textContent = t; if (t-- <= 0) closeNow(); else timer = setTimeout(tick, 1000); };
-    if (!pending) { tick(); return; }
-    // No signal: the registration is saved on this phone and uploads once online. Don't auto-close until it has.
-    $("cdline").hidden = true;
-    trackUpload($("syncnote"), "Uploading, keep this page open").then(() => {
-      if (!$("stay").hidden) { $("cdline").hidden = false; tick(); }
-    }).catch(console.error);
+    tick();
   };
   const newCode = () => {
     const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -448,25 +349,19 @@ function register() {
     return s;
   };
 
-  const syncType = () => {
-    const ben = document.querySelector('input[name="ptype"]:checked')?.value === "Beneficiary";
-    $("ofwWrap").hidden = !ben; $("ofwName").required = ben;
-  };
-  document.querySelectorAll('input[name="ptype"]').forEach(r => r.addEventListener("change", syncType));
-
   $("reg").addEventListener("submit", async e => {
-    e.preventDefault(); $("msg").textContent = "";
-    const type = document.querySelector('input[name="ptype"]:checked')?.value;
-    if (type === "Beneficiary" && !$("ofwName").value.trim()) { $("msg").textContent = "Please enter the name of the OFW."; $("ofwName").focus(); return; }
-    $("go").disabled = true;
+    e.preventDefault(); $("go").disabled = true; $("msg").textContent = "";
     try {
       const id = newCode();
-      queueBg({ action: "register", id, name: $("name").value.trim(), address: $("address").value.trim(),
-        mobile: $("mobile").value.trim(), type, sector: document.querySelector('input[name="sector"]:checked').value,
-        ofwName: type === "Beneficiary" ? $("ofwName").value.trim() : "" });
+      await setDoc(doc(db, "participants", id), {
+        name: $("name").value.trim(), mobile: $("mobile").value.trim(),
+        org: $("org").value.trim(), createdAt: serverTimestamp(),
+      });
+      try { await setDoc(doc(db, "config", "registered"), { n: increment(1) }, { merge: true }); }
+      catch (e) { console.error("registered counter", e); }
       localStorage.setItem("participantId", id);
       localStorage.setItem("stampStore", JSON.stringify({ pid: id, vt: Date.now(), stamps: {} }));
-      await finishUp(id, true);
+      await finishUp(id);
     } catch (err) {
       console.error(err);
       $("msg").textContent = "Registration failed. Check your connection and try again.";
@@ -478,11 +373,14 @@ function register() {
     e.preventDefault(); $("rmsg").textContent = "";
     const id = $("code").value.trim().toUpperCase();
     try {
-      const r = id ? await call({ action: "lookup", code: id }) : { exists: false };
-      if (!r.exists) { $("rmsg").textContent = "Code not found. Check it and try again."; return; }
+      const snap = id && await getDoc(doc(db, "participants", id));
+      if (!snap || !snap.exists()) { $("rmsg").textContent = "Code not found. Check it and try again."; return; }
       localStorage.setItem("participantId", id);
-      const stamps = r.stamps || {};
-      if (r.epoch != null) localStorage.setItem("epoch", r.epoch);
+      const stamps = {};
+      try {
+        const vs = await getDocs(query(collection(db, "visits"), where("pid", "==", id)));
+        vs.forEach(d => { const v = d.data(), r = String(v.round ?? 1); (stamps[r] = stamps[r] || []).push(v.agency); });
+      } catch (e) { console.error(e); }
       localStorage.setItem("stampStore", JSON.stringify({ pid: id, vt: Date.now(), stamps }));
       await finishUp(id);
     } catch (err) { console.error(err); $("rmsg").textContent = "Could not check the code. Try again."; }
@@ -509,31 +407,35 @@ async function visit() {
 
   try {
     // Re-check the registration about every 10 minutes (catches cleared data).
-    st.round = st.round || { n: 1, t: 0 };
+    if (!st.vt || Date.now() - st.vt > 600000) {
+      if (!(await getDoc(doc(db, "participants", pid))).exists()) {
+        localStorage.removeItem("participantId"); localStorage.removeItem("stampStore");
+        return toRegister();
+      }
+      st.vt = Date.now();
+    }
+    if (!st.round || Date.now() - st.round.t > 600000) {
+      const rs = await getDoc(doc(db, "config", "round"));
+      st.round = { n: rs.exists() ? rs.data().n : 1, t: Date.now() };
+    }
     const round = st.round.n;
     st.stamps = st.stamps || {};
     const have = st.stamps[round] = st.stamps[round] || [];
 
-    const fresh = !have.includes(agency); // the phone already knows what it has stamped
-    const qid = queueBg(fresh ? { action: "visit", pid, agency } : { action: "check", pid });
-    const up = fresh ? trackUpload($("vupl"), "Uploading your stamp") : null;
-    // Online: confirm with the sheet BEFORE showing anything, so a cleared registration never shows old stamps.
-    if (navigator.onLine) { await waitResult(qid, 2500); if (!localStorage.getItem("participantId")) return; }
+    const ref = doc(db, "visits", `${pid}_${agency}_${round}`);
+    let fresh = true;
+    try {
+      await setDoc(ref, { pid, agency, round, ts: serverTimestamp() });
+    } catch (e) {
+      if (e.code !== "permission-denied") throw e;
+      if (!(await getDoc(ref)).exists()) throw e; // a real rules problem, not "already stamped"
+      fresh = false;
+    }
     if (!have.includes(agency)) have.push(agency);
     save();
     $("vtitle").textContent = fresh ? `Visit recorded: ${AGENCIES[agency]}` : `Already recorded at ${AGENCIES[agency]}`;
     $("vsub").textContent = fresh ? `Participant code ${pid}` : "No need to scan this one again.";
-    if (fresh) {
-      up.then(() => {
-        const r = results[qid]; // the sheet says which round it counted this in
-        if (r && r.round && r.round !== round) {
-          const o = st.stamps[r.round] = st.stamps[r.round] || [];
-          if (!o.includes(agency)) o.push(agency);
-          const k = have.indexOf(agency); if (k >= 0) have.splice(k, 1);
-          st.round = { n: r.round, t: Date.now() }; save(); showStamps();
-        }
-      }).catch(console.error);
-    }
+
     const showStamps = () => {
       const flags = codes.map(c => have.includes(c));
       const n = flags.filter(Boolean).length;
@@ -554,20 +456,12 @@ async function visit() {
     showStamps();
     $("tally").hidden = false;
 
-    // Keep checking while this page is open, so a cleared registration empties this screen too:
-    // when the person comes back to the tab, when signal returns, and about every 30 seconds for 10 minutes.
-    const recheck = () => { if (!document.hidden && navigator.onLine && !outbox().some(q => q.action === "check")) queueBg({ action: "check", pid }); };
-    document.addEventListener("visibilitychange", recheck);
-    addEventListener("online", recheck);
-    const t0 = Date.now(), iv = setInterval(() => { if (Date.now() - t0 > 600000) clearInterval(iv); else setTimeout(recheck, Math.random() * 5000); }, 30000);
-
     // Rebuild the checklist from the server (for a new phone, or after data was cleared).
     $("resync").onclick = async () => {
       $("resync").disabled = true;
       try {
-        const r = await call({ action: "lookup", code: pid });
-        if (!r.exists && !outbox().some(q => q.action === "register" && q.id === pid)) { onReset(); return; }
-        have.length = 0; (r.stamps[round] || []).forEach(a => have.push(a));
+        const vs = await getDocs(query(collection(db, "visits"), where("pid", "==", pid), where("round", "==", round)));
+        have.length = 0; vs.forEach(d => have.push(d.data().agency));
         save(); showStamps();
       } catch (e) { console.error(e); }
       $("resync").disabled = false;
@@ -575,7 +469,7 @@ async function visit() {
   } catch (e) {
     console.error(e);
     $("vtitle").textContent = "Couldn't record your visit";
-    $("verr").textContent = "Something went wrong. Scan the QR code again.";
+    $("verr").textContent = "Check your connection and scan the QR code again.";
   }
 }
 
@@ -616,9 +510,11 @@ function admin() {
     charts[id] = new Chart($(id), cfg);
   };
 
-  // Numbers come from cheap count queries (about 1 read each), refreshed every 2 minutes.
+  // Numbers come from cheap count queries (about 1 read each), refreshed every 30 seconds.
   let cur = 1, sel = "cur", counts = {}, total = 0, registered = 0, people = [], detail = null;
   const roundNow = () => (sel === "cur" ? cur : sel);
+  const visitsQ = (...f) => query(collection(db, "visits"), ...f);
+  const roundFilter = r => (r === "all" ? [] : [where("round", "==", Number(r))]);
 
   const VIEWS = { all: ["s-reg", "s-agency", "s-tally"], reg: ["s-reg"], agency: ["s-agency"], tally: ["s-tally"] };
   const NAMES = { all: "Menu", reg: "Registration QR", agency: "Agency QR codes", tally: "Tally" };
@@ -675,117 +571,162 @@ function admin() {
       options: { indexAxis: "y", scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } } });
   };
 
-  const pin = () => { let p = sessionStorage.getItem("pin"); if (p === null) { p = prompt("Admin PIN") || ""; sessionStorage.setItem("pin", p); } return p; };
-  const adminCall = body => call({ ...body, pin: pin() }, 60000);
-  const bad = e => {
-    const m = e.message;
-    if (m === "Wrong PIN") { sessionStorage.removeItem("pin"); return "Wrong PIN. Press Refresh to try again."; }
-    if (m === "NOLINK") return "The Apps Script link is not set. Paste the Web app URL (ending in /exec) into API at the top of index.html.";
-    if (m === "NOTJSON") {
-      const t = e.snippet || "";
-      const why = /authoriz|permission/i.test(t) ? "The script needs permission: in Apps Script pick the function setup, click Run, then Allow."
-        : /sign in|accounts\.google/i.test(t) ? "Google wants a sign-in: set Who has access to Anyone (not 'Anyone with Google account'), then Deploy > New version."
-        : /unable to open|not found|doesn't exist|does not exist/i.test(t) ? "The link is wrong or that deployment was removed: copy the Web app URL again from Deploy > Manage deployments."
-        : "Check the deployment settings and the link in index.html.";
-      return `Google sent back a web page instead of data. ${why} Google said: "${t}"`;
-    }
-    if (m === "NETWORK") return "Could not connect to the link. Check your internet, that the link in index.html is the Web app URL ending in /exec, and that Who has access is set to Anyone.";
-    if (m === "TIMEOUT") return "Google took too long to answer. Press Refresh to try again.";
-    if (/permission|authori/i.test(m)) return "The script is not authorized yet. In Apps Script, run any function once and click Allow. (" + m + ")";
-    return "Google Sheet script error: " + m;
-  };
-
-  const paintDetail = () => {
-    const { per, times } = detail;
-    $("np").textContent = Object.keys(per).length;
-    $("nall").textContent = Object.values(per).filter(n => n >= TOTAL).length;
-    $("chDist").hidden = false; $("chTime").hidden = false;
-    const dist = Array(TOTAL).fill(0);
-    Object.values(per).forEach(n => dist[Math.min(n, TOTAL) - 1]++);
-    draw("cDist", { type: "bar",
-      data: { labels: dist.map((_, i) => String(i + 1)), datasets: [{ data: dist, backgroundColor: "#F2B705" }] },
-      options: { scales: { x: { title: { display: true, text: "Agencies visited" } }, y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: "Participants" } } } } });
-    times.sort((a, b) => a - b);
-    const byDay = times.length && times[times.length - 1] - times[0] > 48 * 3600e3;
-    $("tt").textContent = byDay ? "Visits per day" : "Visits per hour";
-    const fmt = t => byDay ? t.toLocaleDateString([], { month: "short", day: "numeric" })
-                           : t.toLocaleString([], { month: "short", day: "numeric", hour: "numeric" });
-    const buckets = new Map(); times.forEach(t => buckets.set(fmt(t), (buckets.get(fmt(t)) || 0) + 1));
-    draw("cTime", { type: "line",
-      data: { labels: [...buckets.keys()], datasets: [{ data: [...buckets.values()], borderColor: BRAND, backgroundColor: "rgba(11,47,122,.12)", fill: true, tension: .25 }] },
-      options: { scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
-  };
-
   async function loadStats() {
     $("aerr").textContent = "";
     try {
-      const d = await adminCall({ action: "report" });
-      const ids = new Set(), seen = new Set();
-      d.participants = d.participants.filter(p => !ids.has(p.id) && ids.add(p.id));
-      const all = d.visits.filter(v => { const k = `${v.pid}|${v.agency}|${v.round}`; return ids.has(v.pid) && !seen.has(k) && seen.add(k); });
-      cur = d.cur; registered = d.participants.length; fillSel();
-      const r = roundNow(), vs = all.filter(v => r === "all" || Number(v.round) === Number(r));
-      counts = {}; codes.forEach(c => { counts[c] = 0; });
-      const per = {}, times = [];
-      vs.forEach(v => { if (v.agency in counts) counts[v.agency]++; per[v.pid] = (per[v.pid] || 0) + 1; if (v.ts) times.push(new Date(v.ts)); });
-      total = vs.length; detail = { per, times };
-      people = d.participants.sort((a, b) => b.createdAt - a.createdAt);
-      $("pcount").textContent = `(${people.length})`;
-      paint(); paintDetail(); renderPeople();
+      const [rs, rg] = await Promise.all([getDoc(doc(db, "config", "round")), getDoc(doc(db, "config", "registered"))]);
+      cur = rs.exists() ? rs.data().n : 1;
+      registered = rg.exists() ? rg.data().n : 0;
+      fillSel();
+      const r = roundNow();
+      const res = await Promise.all(codes.map(c => getCountFromServer(visitsQ(where("agency", "==", c), ...roundFilter(r)))));
+      codes.forEach((c, i) => { counts[c] = res[i].data().count; });
+      total = Object.values(counts).reduce((a, b) => a + b, 0);
+      paint();
       $("live").textContent = "Updated " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    } catch (e) { console.error(e); $("live").textContent = "Offline"; $("aerr").textContent = bad(e); }
+    } catch (e) {
+      console.error(e); $("live").textContent = "Offline";
+      $("aerr").textContent = "Could not load the tally. Check the Firestore rules and your connection.";
+    }
   }
 
+  // Detailed report: reads every visit once (on demand) for the per-person numbers and charts.
+  const resetDetail = () => {
+    detail = null; $("chDist").hidden = true; $("chTime").hidden = true;
+    $("np").textContent = "\u2014"; $("nall").textContent = "\u2014"; renderPeople();
+  };
+  $("detail").onclick = async () => {
+    const r = roundNow();
+    if (!confirm(`This reads every visit record once (about ${total}). The free daily quota is 50,000 reads. Continue?`)) return;
+    $("detail").disabled = true; say("");
+    try {
+      const snap = await getDocs(r === "all" ? collection(db, "visits") : visitsQ(...roundFilter(r)));
+      const per = {}, times = [], seen = new Set();
+      snap.forEach(d => {
+        const v = d.data(), k = `${v.pid}|${v.agency}|${v.round ?? 1}`;
+        if (seen.has(k)) return; seen.add(k);
+        per[v.pid] = (per[v.pid] || 0) + 1;
+        const t = v.ts?.toDate?.(); if (t) times.push(t);
+      });
+      detail = { per, times };
+      $("np").textContent = Object.keys(per).length;
+      $("nall").textContent = Object.values(per).filter(n => n >= TOTAL).length;
+      $("chDist").hidden = false; $("chTime").hidden = false;
+      const dist = Array(TOTAL).fill(0);
+      Object.values(per).forEach(n => dist[Math.min(n, TOTAL) - 1]++);
+      draw("cDist", { type: "bar",
+        data: { labels: dist.map((_, i) => String(i + 1)), datasets: [{ data: dist, backgroundColor: "#F2B705" }] },
+        options: { scales: { x: { title: { display: true, text: "Agencies visited" } }, y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: "Participants" } } } } });
+      times.sort((a, b) => a - b);
+      const byDay = times.length && times[times.length - 1] - times[0] > 48 * 3600e3;
+      $("tt").textContent = byDay ? "Visits per day" : "Visits per hour";
+      const fmt = t => byDay ? t.toLocaleDateString([], { month: "short", day: "numeric" })
+                             : t.toLocaleString([], { month: "short", day: "numeric", hour: "numeric" });
+      const buckets = new Map(); times.forEach(t => buckets.set(fmt(t), (buckets.get(fmt(t)) || 0) + 1));
+      draw("cTime", { type: "line",
+        data: { labels: [...buckets.keys()], datasets: [{ data: [...buckets.values()], borderColor: BRAND, backgroundColor: "rgba(11,47,122,.12)", fill: true, tension: .25 }] },
+        options: { scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
+      renderPeople();
+    } catch (e) { console.error(e); say("Could not load the detailed report. Check your connection and try again."); }
+    $("detail").disabled = false;
+  };
+
+  // Registrants: loaded only when you press the button.
+  const stampText = p => (detail ? `${detail.per[p.id] || 0} / ${TOTAL}` : "\u2014");
   const renderPeople = () => {
     const q = $("psearch").value.trim().toLowerCase();
-    const list = people.filter(p => !q || [p.id, p.name, p.address, p.mobile, p.type, p.sector, p.ofwName].some(x => String(x || "").toLowerCase().includes(q)));
+    const list = people.filter(p => !q || [p.id, p.name, p.mobile, p.org].some(x => String(x || "").toLowerCase().includes(q)));
     $("pbody").textContent = "";
     for (const p of list) {
       const tr = document.createElement("tr");
-      const when = p.createdAt ? new Date(p.createdAt) : null;
-      const cells = [p.id, p.name, p.address || "", p.mobile, p.type || "", p.sector || "", p.ofwName || "",
-        when ? when.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "", detail ? `${detail.per[p.id] || 0} / ${TOTAL}` : "\u2014"];
+      const when = p.createdAt?.toDate?.();
+      const cells = [p.id, p.name, p.mobile, p.org || "",
+        when ? when.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "", stampText(p)];
       for (const t of cells) { const td = document.createElement("td"); td.textContent = t; tr.append(td); }
       $("pbody").append(tr);
     }
   };
+  const loadPeople = async () => {
+    $("pmsg").textContent = ""; $("pretry").disabled = true;
+    try {
+      const snap = await getDocs(collection(db, "participants"));
+      people = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.createdAt?.seconds ?? 9e15) - (a.createdAt?.seconds ?? 9e15));
+      $("ptable").hidden = false; $("pcount").textContent = `(${people.length})`;
+      $("pretry").textContent = "Refresh registrants"; renderPeople();
+    } catch (e) {
+      console.error(e); $("ptable").hidden = true; $("pcount").textContent = "";
+      $("pmsg").textContent = e.code === "permission-denied"
+        ? "Registrant details are locked. In Firebase, set settings/admin: viewParticipants = true, then press the button again."
+        : "Could not load registrants. Check your connection.";
+    }
+    $("pretry").disabled = false;
+  };
   const csvCell = v => { let t = String(v ?? ""); if (/^[=+\-@\t\r]/.test(t)) t = "'" + t; return '"' + t.replace(/"/g, '""') + '"'; };
   $("pcsv").onclick = () => {
-    const rows = [["Code", "Name", "Address", "Mobile", "OFW/Beneficiary", "LB/SB", "Name of OFW", "Registered at", "Stamps (selected round)"],
-      ...people.map(p => [p.id, p.name, p.address || "", p.mobile, p.type || "", p.sector || "", p.ofwName || "", p.createdAt ? new Date(p.createdAt).toLocaleString() : "", detail ? detail.per[p.id] || 0 : ""])];
+    const rows = [["Code", "Name", "Mobile", "Barangay/organization", "Registered at", "Stamps (selected round)"],
+      ...people.map(p => [p.id, p.name, p.mobile, p.org || "", p.createdAt?.toDate?.().toLocaleString() || "", detail ? detail.per[p.id] || 0 : ""])];
     const blob = new Blob(["\ufeff" + rows.map(r => r.map(csvCell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "registered-participants.csv"; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
 
-  $("rsel").onchange = e => { sel = e.target.value; loadStats(); };
+  $("rsel").onchange = e => { sel = e.target.value; resetDetail(); loadStats(); };
 
-  const danger = async (btn, fn, okMsg) => {
-    $(btn).disabled = true; say("");
-    try { await fn(); say(okMsg, true); sel = "cur"; await loadStats(); } catch (e) { console.error(e); say(bad(e)); }
-    $(btn).disabled = false;
-  };
-  $("reset").onclick = () => {
+  $("reset").onclick = async () => {
     if (prompt(`Start round ${cur + 1}? The tally restarts from zero.\nRound ${cur} data is kept (not deleted) and stays in the dropdown.\n\nType NEW to confirm.`) !== "NEW") { say("Cancelled: nothing changed."); return; }
-    danger("reset", () => adminCall({ action: "newround" }), `Round ${cur + 1} started.`);
+    $("reset").disabled = true; say("");
+    try {
+      await setDoc(doc(db, "config", "round"), { n: cur + 1 });
+      say(`Round ${cur + 1} started.`, true); sel = "cur"; resetDetail(); await loadStats();
+    } catch (e) { console.error(e); say("Could not start a new round. Check that the latest Firestore rules are published."); }
+    $("reset").disabled = false;
   };
-  $("del").onclick = () => {
+
+  const batchDelete = async refs => {
+    for (let i = 0; i < refs.length; i += 400) {
+      const b = writeBatch(db);
+      refs.slice(i, i + 400).forEach(r => b.delete(r));
+      await b.commit();
+    }
+  };
+  const lockedMsg = e => e.code === "permission-denied"
+    ? "Delete is locked, so nothing was deleted. In Firebase, set settings/admin deleteEnabled = true (and make sure the latest rules are published), then try again."
+    : "Delete failed. Check your connection and try again.";
+
+  $("del").onclick = async () => {
     say("");
     if (sel === "all") { say("Pick a single round in the dropdown to delete."); return; }
     const r = sel === "cur" ? cur : Number(sel);
     if (prompt(`Permanently delete Round ${r}? This removes about ${total} visit record(s) and cannot be undone.\n\nType DELETE ROUND ${r} to confirm.`) !== `DELETE ROUND ${r}`) { say("Cancelled: the text did not match, so nothing was deleted."); return; }
-    danger("del", () => adminCall({ action: "delround", round: r }), `Deleted Round ${r} visits.`);
+    $("del").disabled = true;
+    try {
+      const snap = await getDocs(visitsQ(where("round", "==", r)));
+      await batchDelete(snap.docs.map(d => d.ref));
+      say(`Deleted ${snap.size} record(s) from Round ${r}.`, true); sel = "cur"; resetDetail(); await loadStats();
+    } catch (e) { console.error(e); say(lockedMsg(e)); }
+    $("del").disabled = false;
   };
-  $("delall").onclick = () => {
+
+  $("delall").onclick = async () => {
     say("");
-    if (prompt(`Delete ALL records?\nThis permanently erases every visit, every registered participant and all rounds. Participants will have to register again. It cannot be undone.\n\nType DELETE ALL to confirm.`) !== "DELETE ALL") { say("Cancelled: nothing was deleted."); return; }
-    danger("delall", () => adminCall({ action: "delall" }), "Deleted everything.");
+    if (prompt(`Delete ALL records?\nThis permanently erases every visit (about ${total} shown), every registered participant, the registered counter, and all rounds. Participants will have to register again. It cannot be undone.\n\nType DELETE ALL to confirm.`) !== "DELETE ALL") { say("Cancelled: nothing was deleted."); return; }
+    $("delall").disabled = true;
+    try {
+      const [vs, ps] = await Promise.all([getDocs(collection(db, "visits")), getDocs(collection(db, "participants"))]);
+      const refs = [...vs.docs, ...ps.docs].map(d => d.ref);
+      refs.push(doc(db, "config", "registered"), doc(db, "config", "round"));
+      await batchDelete(refs);
+      people = []; $("ptable").hidden = true; $("pcount").textContent = "";
+      say(`Deleted everything: ${vs.size} visit(s) and ${ps.size} participant(s).`, true); sel = "cur"; resetDetail(); await loadStats();
+    } catch (e) { console.error(e); say(lockedMsg(e)); }
+    $("delall").disabled = false;
   };
 
   $("refresh").onclick = loadStats;
-  $("psearch").oninput = renderPeople;
+  $("psearch").oninput = renderPeople; $("pretry").onclick = loadPeople;
   document.addEventListener("visibilitychange", () => { if (!document.hidden) loadStats(); });
-  setInterval(() => { if (!document.hidden) loadStats(); }, 120000);
+  setInterval(() => { if (!document.hidden) loadStats(); }, 30000);
   loadStats();
 }
 </script>
