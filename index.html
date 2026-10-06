@@ -294,12 +294,15 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http")) naviga
 
 // Talks to the Google Sheet. Text/plain keeps it a simple request (no CORS preflight).
 const call = async (body, ms = 20000) => {
+  if (!/^https:\/\/script\.google\.com\/.+\/exec/.test(API)) throw new Error("NOLINK");
   const c = new AbortController(), t = setTimeout(() => c.abort(), ms);
-  try {
-    const j = await (await fetch(API, { method: "POST", body: JSON.stringify(body), signal: c.signal })).json();
-    if (j.error) { const e = new Error(j.error); e.server = true; e.permanent = ["Wrong PIN", "Unknown action"].includes(j.error); throw e; }
-    return j;
-  } finally { clearTimeout(t); }
+  let text;
+  try { text = await (await fetch(API, { method: "POST", body: JSON.stringify(body), signal: c.signal })).text(); }
+  catch (e) { throw new Error(e.name === "AbortError" ? "TIMEOUT" : "NETWORK"); }
+  finally { clearTimeout(t); }
+  let j; try { j = JSON.parse(text); } catch { throw new Error("NOTJSON"); }
+  if (j.error) { const e = new Error(j.error); e.server = true; e.permanent = ["Wrong PIN", "Unknown action"].includes(j.error); throw e; }
+  return j;
 };
 
 // OFFLINE: every registration/visit goes into a queue saved on the phone and is sent when there is signal.
@@ -670,8 +673,16 @@ function admin() {
 
   const pin = () => { let p = sessionStorage.getItem("pin"); if (p === null) { p = prompt("Admin PIN") || ""; sessionStorage.setItem("pin", p); } return p; };
   const adminCall = body => call({ ...body, pin: pin() }, 60000);
-  const bad = e => { if (e.message === "Wrong PIN") { sessionStorage.removeItem("pin"); return "Wrong PIN. Press Refresh to try again."; }
-    return "Could not reach the Google Sheet. Check your connection and the Apps Script link in index.html."; };
+  const bad = e => {
+    const m = e.message;
+    if (m === "Wrong PIN") { sessionStorage.removeItem("pin"); return "Wrong PIN. Press Refresh to try again."; }
+    if (m === "NOLINK") return "The Apps Script link is not set. Paste the Web app URL (ending in /exec) into API at the top of index.html.";
+    if (m === "NOTJSON") return "Google sent back a web page instead of data. In Apps Script: Deploy > Manage deployments > Edit > set Who has access to Anyone > New version > Deploy.";
+    if (m === "NETWORK") return "Could not connect to the link. Check your internet, that the link in index.html is the Web app URL ending in /exec, and that Who has access is set to Anyone.";
+    if (m === "TIMEOUT") return "Google took too long to answer. Press Refresh to try again.";
+    if (/permission|authori/i.test(m)) return "The script is not authorized yet. In Apps Script, run any function once and click Allow. (" + m + ")";
+    return "Google Sheet script error: " + m;
+  };
 
   const paintDetail = () => {
     const { per, times } = detail;
