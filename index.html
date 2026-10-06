@@ -41,6 +41,8 @@ button{font:inherit;font-weight:700;padding:13px 20px;border:0;border-radius:12p
 button:hover{background:var(--blue-2)}
 button.ghost{background:transparent;color:var(--blue);border:1.5px solid var(--blue)}
 button.ghost:hover{background:var(--blue);color:#fff}
+button.danger{color:var(--bad);border-color:var(--bad)}
+button.danger:hover{background:var(--bad);color:#fff}
 button.sm{padding:6px 12px;font-size:.9rem;border-radius:8px}
 button:focus-visible,a:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 button:disabled{opacity:.55;cursor:default}
@@ -211,9 +213,9 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
   <section class="noprint" id="s-tally">
     <div class="sec-head">
       <h2>Tally</h2>
-      <span class="noprint"><span class="live" id="live">&#9679; Live</span> &nbsp; <select id="rsel" aria-label="Round to show"></select> <button class="ghost sm" id="reset">Start new round</button> <button class="ghost sm" id="del">Delete round</button></span>
+      <span class="noprint"><span class="live" id="live">&#9679; Live</span> &nbsp; <select id="rsel" aria-label="Round to show"></select> <button class="ghost sm" id="reset">Start new round</button> <button class="ghost sm" id="del">Delete round</button> <button class="ghost sm danger" id="delall">Delete all records</button></span>
     </div>
-    <p class="sub noprint">"Start new round" restarts the tally from zero and keeps earlier rounds, which you can view from the dropdown. "Delete round" permanently removes the round currently selected in the dropdown.</p>
+    <p class="sub noprint">"Start new round" restarts the tally from zero and keeps earlier rounds, which you can view from the dropdown. "Delete round" permanently removes the round currently selected in the dropdown. "Delete all records" erases everything: all visits, all registrations, and the counters.</p>
     <p class="msg" id="amsg" role="alert" style="margin:0 0 12px"></p>
     <div class="stats">
       <div class="stat"><b id="nreg">0</b><span>Registered</span></div>
@@ -580,6 +582,29 @@ function admin() {
         : "Delete failed. Check your connection and try again.");
     }
     $("del").disabled = false;
+  };
+  $("delall").onclick = async () => {
+    say("");
+    if (prompt(`Delete ALL records?\nThis permanently erases every visit (${all.length}), every registered participant, the registered counter, and all rounds. Participants will have to register again. It cannot be undone.\n\nType DELETE ALL to confirm.`) !== "DELETE ALL") { say("Cancelled: nothing was deleted."); return; }
+    $("delall").disabled = true;
+    try {
+      const [vs, ps] = await Promise.all([getDocs(collection(db, "visits")), getDocs(collection(db, "participants"))]);
+      const refs = [...vs.docs, ...ps.docs].map(d => d.ref);
+      refs.push(doc(db, "config", "registered"), doc(db, "config", "round"));
+      for (let i = 0; i < refs.length; i += 400) {
+        const b = writeBatch(db);
+        refs.slice(i, i + 400).forEach(r => b.delete(r));
+        await b.commit();
+      }
+      sel = "cur";
+      say(`Deleted everything: ${vs.size} visit(s) and ${ps.size} participant(s).`, true);
+    } catch (e) {
+      console.error(e);
+      say(e.code === "permission-denied"
+        ? "Delete is locked, so nothing was deleted. In Firebase, set settings/admin deleteEnabled = true (and make sure the latest rules are published), then try again."
+        : "Delete failed. Check your connection and try again.");
+    }
+    $("delall").disabled = false;
   };
   const onErr = e => { console.error(e); $("live").textContent = "Offline"; $("aerr").textContent = "Could not load the tally. Check the Firestore rules."; };
   onSnapshot(doc(db, "config", "round"), s => { cur = s.exists() ? s.data().n : 1; fillSel(); refresh(); }, onErr);
