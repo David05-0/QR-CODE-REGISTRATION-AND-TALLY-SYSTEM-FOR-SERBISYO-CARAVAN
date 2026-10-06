@@ -49,6 +49,7 @@ th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line)}
 .sec-head{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:2px solid var(--brand);margin-top:32px;padding-bottom:6px}
 .sec-head h2{margin:0}
 html{scroll-behavior:smooth}
+.live{color:var(--ok);font-weight:600}
 nav{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
 nav a{padding:8px 14px;border:1px solid var(--brand);border-radius:20px;color:var(--brand);text-decoration:none;font-weight:600;font-size:.95rem}
 nav a:hover{background:var(--brand);color:#fff}
@@ -131,7 +132,7 @@ nav a:hover{background:var(--brand);color:#fff}
   <section class="noprint" id="s-tally">
     <div class="sec-head">
       <h2>3. Tally</h2>
-      <button class="ghost" id="refresh">Refresh</button>
+      <span class="live" id="live">&#9679; Live</span>
     </div>
     <div class="stats">
       <div class="stat"><b id="nv">0</b><span>Total visits</span></div>
@@ -154,7 +155,7 @@ nav a:hover{background:var(--brand);color:#fff}
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, getDocs, collection, serverTimestamp }
+import { getFirestore, doc, getDoc, setDoc, getDocs, onSnapshot, collection, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ===== CONFIG: edit these ===== */
@@ -312,10 +313,9 @@ function admin() {
     charts[id] = new Chart($(id), cfg);
   };
 
-  async function load() {
+  function render(vs) {
     $("aerr").textContent = "";
     try {
-      const vs = await getDocs(collection(db, "visits"));
       const perAgency = Object.fromEntries(codes.map(c => [c, 0]));
       const perPerson = {}, times = [];
       vs.forEach(d => {
@@ -369,7 +369,9 @@ function admin() {
         options: { scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
     } catch (e) { console.error(e); $("aerr").textContent = "Could not load the tally. Check the Firestore rules."; }
   }
-  $("refresh").onclick = load; load(); setInterval(load, 60000);
+  onSnapshot(collection(db, "visits"), render, e => {
+    console.error(e); $("live").textContent = "Offline"; $("aerr").textContent = "Could not load the tally. Check the Firestore rules.";
+  });
 }
 </script>
 </body>
