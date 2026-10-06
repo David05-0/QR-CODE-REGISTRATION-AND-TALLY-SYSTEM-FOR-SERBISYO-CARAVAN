@@ -137,8 +137,9 @@ nav a:hover{background:var(--brand);color:#fff}
   <section class="noprint" id="s-tally">
     <div class="sec-head">
       <h2>3. Tally</h2>
-      <span class="noprint"><span class="live" id="live">&#9679; Live</span> &nbsp; <button class="ghost sm" id="reset">Reset visits</button></span>
+      <span class="noprint"><span class="live" id="live">&#9679; Live</span> &nbsp; <select id="rsel" aria-label="Round to show"></select> <button class="ghost sm" id="reset">Start new round</button></span>
     </div>
+    <p class="sub noprint">"Start new round" restarts the tally from zero. Nothing is deleted: earlier rounds are kept and can be viewed from the dropdown.</p>
     <div class="stats">
       <div class="stat"><b id="nv">0</b><span>Total visits</span></div>
       <div class="stat"><b id="np">0</b><span>Participants with a visit</span></div>
@@ -160,7 +161,7 @@ nav a:hover{background:var(--brand);color:#fff}
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, getDocs, onSnapshot, writeBatch, collection, serverTimestamp }
+import { getFirestore, doc, getDoc, setDoc, getDocs, onSnapshot, collection, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ===== CONFIG: edit these ===== */
@@ -261,7 +262,8 @@ function register() {
 async function visit() {
   const agency = (Q.get("agency") || "").toUpperCase();
   const toRegister = () => location.replace(`${REG_URL}&next=${encodeURIComponent(location.href)}`);
-  const visited = async c => (await getDoc(doc(db, "visits", `${pid}_${c}`))).exists();
+  let round = 1;
+  const visited = async c => (await getDoc(doc(db, "visits", `${pid}_${c}_${round}`))).exists();
 
   if (!AGENCIES[agency]) {
     $("vtitle").textContent = "Unknown QR code";
@@ -271,11 +273,12 @@ async function visit() {
   if (!pid) return toRegister();
   try {
     if (!(await getDoc(doc(db, "participants", pid))).exists()) { localStorage.removeItem("participantId"); return toRegister(); }
+    const rs = await getDoc(doc(db, "config", "round")); round = rs.exists() ? rs.data().n : 1;
     if (await visited(agency)) {
       $("vtitle").textContent = `Already recorded at ${AGENCIES[agency]}`;
       $("vsub").textContent = "No need to scan this one again.";
     } else {
-      await setDoc(doc(db, "visits", `${pid}_${agency}`), { pid, agency, ts: serverTimestamp() });
+      await setDoc(doc(db, "visits", `${pid}_${agency}_${round}`), { pid, agency, round, ts: serverTimestamp() });
       $("vtitle").textContent = `Visit recorded: ${AGENCIES[agency]}`;
       $("vsub").textContent = `Participant code ${pid}`;
     }
@@ -339,7 +342,7 @@ function admin() {
       const perAgency = Object.fromEntries(codes.map(c => [c, 0]));
       const perPerson = {}, times = [];
       vs.forEach(d => {
-        const { pid, agency, ts } = d.data();
+        const { pid, agency, ts } = d;
         if (agency in perAgency) perAgency[agency]++;
         perPerson[pid] = (perPerson[pid] || 0) + 1;
         const t = ts?.toDate?.(); if (t) times.push(t);
@@ -348,14 +351,14 @@ function admin() {
       const sorted = [...codes].sort((a, b) => perAgency[b] - perAgency[a]);
       const last = sorted[sorted.length - 1];
 
-      $("nv").textContent = vs.size;
+      $("nv").textContent = vs.length;
       $("np").textContent = people;
       $("nall").textContent = Object.values(perPerson).filter(n => n >= TOTAL).length;
-      $("avg").textContent = people ? (vs.size / people).toFixed(1) : "0";
-      $("top").textContent = vs.size ? perAgency[sorted[0]] : "-";
-      $("topl").textContent = vs.size ? "Most visited: " + AGENCIES[sorted[0]] : "Most visited";
-      $("low").textContent = vs.size ? perAgency[last] : "-";
-      $("lowl").textContent = vs.size ? "Least visited: " + AGENCIES[last] : "Least visited";
+      $("avg").textContent = people ? (vs.length / people).toFixed(1) : "0";
+      $("top").textContent = vs.length ? perAgency[sorted[0]] : "-";
+      $("topl").textContent = vs.length ? "Most visited: " + AGENCIES[sorted[0]] : "Most visited";
+      $("low").textContent = vs.length ? perAgency[last] : "-";
+      $("lowl").textContent = vs.length ? "Least visited: " + AGENCIES[last] : "Least visited";
       for (const c of codes) countEls[c].textContent = `${perAgency[c]} visit${perAgency[c] === 1 ? "" : "s"}`;
 
       $("ag").textContent = "";
@@ -389,27 +392,35 @@ function admin() {
         options: { scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
     } catch (e) { console.error(e); $("aerr").textContent = "Could not load the tally. Check the Firestore rules."; }
   }
-  $("reset").onclick = async () => {
-    if (prompt("This deletes ALL recorded visits and restarts the tally.\nRegistered participants and their codes are kept.\n\nType RESET to confirm.") !== "RESET") return;
-    $("reset").disabled = true; $("aerr").textContent = "";
-    try {
-      const snap = await getDocs(collection(db, "visits"));
-      for (let i = 0; i < snap.docs.length; i += 400) {
-        const b = writeBatch(db);
-        snap.docs.slice(i, i + 400).forEach(d => b.delete(d.ref));
-        await b.commit();
-      }
-    } catch (e) {
-      console.error(e);
-      $("aerr").textContent = e.code === "permission-denied"
-        ? "Reset is locked. In Firebase, create the document settings/admin with resetEnabled = true, then try again."
-        : "Reset failed. Check your connection and try again.";
+  let all = [], cur = 1, sel = "cur";
+  const refresh = () => {
+    const r = sel === "cur" ? cur : sel;
+    const seen = new Set(), rows = [];
+    for (const v of all) {
+      const rd = v.round ?? 1;
+      if (r !== "all" && rd !== Number(r)) continue;
+      const k = `${rd}|${v.pid}|${v.agency}`;
+      if (!seen.has(k)) { seen.add(k); rows.push(v); }
     }
+    render(rows);
+  };
+  const fillSel = () => {
+    const el = $("rsel"); el.textContent = "";
+    for (let i = cur; i >= 1; i--) el.add(new Option(i === cur ? `Round ${i} (current)` : `Round ${i}`, i === cur ? "cur" : String(i)));
+    el.add(new Option("All rounds", "all"));
+    el.value = sel;
+  };
+  $("rsel").onchange = e => { sel = e.target.value; refresh(); };
+  $("reset").onclick = async () => {
+    if (prompt(`Start round ${cur + 1}? The tally restarts from zero.\nRound ${cur} data is kept (not deleted) and stays in the dropdown.\n\nType NEW to confirm.`) !== "NEW") return;
+    $("reset").disabled = true; $("aerr").textContent = "";
+    try { await setDoc(doc(db, "config", "round"), { n: cur + 1 }); sel = "cur"; }
+    catch (e) { console.error(e); $("aerr").textContent = "Could not start a new round. Check the Firestore rules."; }
     $("reset").disabled = false;
   };
-  onSnapshot(collection(db, "visits"), render, e => {
-    console.error(e); $("live").textContent = "Offline"; $("aerr").textContent = "Could not load the tally. Check the Firestore rules.";
-  });
+  const onErr = e => { console.error(e); $("live").textContent = "Offline"; $("aerr").textContent = "Could not load the tally. Check the Firestore rules."; };
+  onSnapshot(doc(db, "config", "round"), s => { cur = s.exists() ? s.data().n : 1; fillSel(); refresh(); }, onErr);
+  onSnapshot(collection(db, "visits"), s => { all = s.docs.map(d => d.data()); refresh(); }, onErr);
 }
 </script>
 </body>
