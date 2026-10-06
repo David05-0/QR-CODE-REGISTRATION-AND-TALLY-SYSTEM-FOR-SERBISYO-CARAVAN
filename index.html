@@ -431,18 +431,17 @@ async function visit() {
   const save = () => localStorage.setItem("stampStore", JSON.stringify(st));
 
   try {
-    // Re-check the registration about every 10 minutes (catches cleared data).
-    if (!st.vt || Date.now() - st.vt > 600000) {
-      if (!(await getDoc(doc(db, "participants", pid))).exists()) {
-        localStorage.removeItem("participantId"); localStorage.removeItem("stampStore");
-        return toRegister();
-      }
-      st.vt = Date.now();
+    // Check on every scan that this registration still exists. If the admin used "Delete all records",
+    // this phone's saved code and stamps are wiped and the person must register again from scratch.
+    if (!(await getDoc(doc(db, "participants", pid))).exists()) {
+      localStorage.removeItem("participantId"); localStorage.removeItem("stampStore");
+      return toRegister();
     }
-    if (!st.round || Date.now() - st.round.t > 600000) {
-      const rs = await getDoc(doc(db, "config", "round"));
-      st.round = { n: rs.exists() ? rs.data().n : 1, t: Date.now() };
-    }
+    st.vt = Date.now();
+    const rs = await getDoc(doc(db, "config", "round"));
+    const rn = rs.exists() ? rs.data().n : 1;
+    if (st.round && st.round.n !== rn) st.stamps = {};
+    st.round = { n: rn, t: Date.now() };
     const round = st.round.n;
     st.stamps = st.stamps || {};
     const have = st.stamps[round] = st.stamps[round] || [];
@@ -742,6 +741,8 @@ function admin() {
       const refs = [...vs.docs, ...ps.docs].map(d => d.ref);
       refs.push(doc(db, "config", "registered"), doc(db, "config", "round"));
       await batchDelete(refs);
+      // Also wipe this device's saved registration so it starts fresh too.
+      localStorage.removeItem("participantId"); localStorage.removeItem("stampStore");
       people = []; $("ptable").hidden = true; $("pcount").textContent = "";
       say(`Deleted everything: ${vs.size} visit(s) and ${ps.size} participant(s).`, true); sel = "cur"; resetDetail(); await loadStats();
     } catch (e) { console.error(e); say(lockedMsg(e)); }
