@@ -293,11 +293,11 @@ const API = "https://script.google.com/macros/s/AKfycbxDb4OSISZ_0KC4xg5OgTfP0vXA
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(console.error);
 
 // Talks to the Google Sheet. Text/plain keeps it a simple request (no CORS preflight).
-const call = async (body, ms = 8000) => {
+const call = async (body, ms = 20000) => {
   const c = new AbortController(), t = setTimeout(() => c.abort(), ms);
   try {
     const j = await (await fetch(API, { method: "POST", body: JSON.stringify(body), signal: c.signal })).json();
-    if (j.error) { const e = new Error(j.error); e.server = true; throw e; }
+    if (j.error) { const e = new Error(j.error); e.server = true; e.permanent = ["Wrong PIN", "Unknown action"].includes(j.error); throw e; }
     return j;
   } finally { clearTimeout(t); }
 };
@@ -314,20 +314,26 @@ const onReset = () => {
   if (Q.get("agency") && Q.get("page") !== "register" && Q.get("page") !== "admin") location.replace(`${REG_URL}&next=${encodeURIComponent(location.href)}`);
 };
 let flushing = null;
-const flush = () => flushing ||= (async () => {
-  try {
-    for (let q; (q = outbox()[0]);) {
-      try {
-        const r = results[q.qid] = await call(q.action === "visit" || q.action === "check" ? { ...q, epoch: localStorage.getItem("epoch") } : q);
-        if (r.reset) { onReset(); return; }
-        if (r.epoch != null && (q.action === "register" || !localStorage.getItem("epoch"))) localStorage.setItem("epoch", r.epoch);
+const flush = () => {
+  if (flushing) return flushing;
+  const run = (async () => {
+    try {
+      for (let q; (q = outbox()[0]);) {
+        try {
+          const r = results[q.qid] = await call(q.action === "visit" || q.action === "check" ? { ...q, epoch: localStorage.getItem("epoch") } : q);
+          if (r.reset) { onReset(); return; }
+          if (r.epoch != null && (q.action === "register" || !localStorage.getItem("epoch"))) localStorage.setItem("epoch", r.epoch);
+        }
+        // Only a request the sheet will never accept is dropped. Busy/lock/quota errors are retried, never lost.
+        catch (e) { if (!e.permanent) throw e; console.error("Rejected by the sheet, dropped:", e.message); }
+        setOut(outbox().slice(1));
       }
-      catch (e) { if (!e.server) throw e; console.error("Rejected by the sheet, dropped:", e.message); }
-      setOut(outbox().slice(1));
-    }
-  } catch (e) { console.warn("Busy or no signal, will retry", e.message); setTimeout(flush, 1000 + Math.random() * 3000); }
-  finally { flushing = null; }
-})();
+    } catch (e) { console.warn("Busy or no signal, will retry", e.message); setTimeout(flush, 1000 + Math.random() * 2000); }
+  })();
+  flushing = run;
+  run.finally(() => { if (flushing === run) flushing = null; }); // reset AFTER it is stored (the old code could stay "busy" forever)
+  return run;
+};
 // Returns the sheet's answer, or null if it is still waiting for signal.
 const queue = async item => {
   item.qid = Math.random().toString(36).slice(2);
