@@ -170,6 +170,7 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
       <div><strong id="count"></strong><span class="small">Collect a stamp at every booth.</span></div>
     </div>
     <ul class="stamps" id="list"></ul>
+    <p style="text-align:center;margin-top:20px"><button class="ghost sm" id="resync">Refresh my stamps</button></p>
   </div>
   <div class="msg" id="verr" role="alert"></div>
 </main>
@@ -359,7 +360,7 @@ function register() {
       try { await setDoc(doc(db, "config", "registered"), { n: increment(1) }, { merge: true }); }
       catch (e) { console.error("registered counter", e); }
       localStorage.setItem("participantId", id);
-      localStorage.setItem("stampStore", JSON.stringify({ pid: id, verified: true, stamps: {} }));
+      localStorage.setItem("stampStore", JSON.stringify({ pid: id, vt: Date.now(), stamps: {} }));
       await finishUp(id);
     } catch (err) {
       console.error(err);
@@ -380,7 +381,7 @@ function register() {
         const vs = await getDocs(query(collection(db, "visits"), where("pid", "==", id)));
         vs.forEach(d => { const v = d.data(), r = String(v.round ?? 1); (stamps[r] = stamps[r] || []).push(v.agency); });
       } catch (e) { console.error(e); }
-      localStorage.setItem("stampStore", JSON.stringify({ pid: id, verified: true, stamps }));
+      localStorage.setItem("stampStore", JSON.stringify({ pid: id, vt: Date.now(), stamps }));
       await finishUp(id);
     } catch (err) { console.error(err); $("rmsg").textContent = "Could not check the code. Try again."; }
   });
@@ -398,58 +399,75 @@ async function visit() {
   }
   if (!pid) return toRegister();
 
-  // The phone remembers what it needs, so a scan costs at most one or two reads.
+  // The phone remembers the checklist, but the server is always asked to record the scan.
   let st = {};
   try { st = JSON.parse(localStorage.getItem("stampStore") || "{}"); } catch {}
   if (st.pid !== pid) st = { pid };
   const save = () => localStorage.setItem("stampStore", JSON.stringify(st));
 
   try {
-    if (!st.verified) {
-      if (!(await getDoc(doc(db, "participants", pid))).exists()) {
-        localStorage.removeItem("participantId"); localStorage.removeItem("stampStore");
-        return toRegister();
-      }
-      st.verified = true;
+    // Every scan: confirm with the server that this person is still registered and which round is live
+    // (2 small reads). Stops stale phone data from showing old stamps after a reset or new round.
+    if (!(await getDoc(doc(db, "participants", pid))).exists()) {
+      localStorage.removeItem("participantId"); localStorage.removeItem("stampStore");
+      return toRegister();
     }
-    if (!st.round || Date.now() - st.round.t > 600000) {
-      const rs = await getDoc(doc(db, "config", "round"));
-      st.round = { n: rs.exists() ? rs.data().n : 1, t: Date.now() };
-    }
-    const round = st.round.n;
+    const rs = await getDoc(doc(db, "config", "round"));
+    const round = rs.exists() ? rs.data().n : 1;
     st.stamps = st.stamps || {};
-    const have = st.stamps[round] = st.stamps[round] || [];
-
-    if (have.includes(agency)) {
-      $("vtitle").textContent = `Already recorded at ${AGENCIES[agency]}`;
-      $("vsub").textContent = "No need to scan this one again.";
-    } else {
-      try {
-        await setDoc(doc(db, "visits", `${pid}_${agency}_${round}`), { pid, agency, round, ts: serverTimestamp() });
-      } catch (e) {
-        if (e.code !== "permission-denied") throw e; // already stamped from another device
-      }
-      have.push(agency);
-      $("vtitle").textContent = `Visit recorded: ${AGENCIES[agency]}`;
-      $("vsub").textContent = `Participant code ${pid}`;
+    let have = st.stamps[round];
+    // Rebuild the checklist from the server when this round isn't cached yet, or every ~10 minutes.
+    if (!have || Date.now() - (st.sync || 0) > 600000) {
+      have = [];
+      const vs = await getDocs(query(collection(db, "visits"), where("pid", "==", pid), where("round", "==", round)));
+      vs.forEach(d => have.push(d.data().agency));
+      st.stamps = { [round]: have }; st.sync = Date.now();
     }
-    save();
 
-    const flags = codes.map(c => have.includes(c));
-    const n = flags.filter(Boolean).length;
-    const pct = Math.round((n / TOTAL) * 100);
-    $("count").textContent = `${n} of ${TOTAL} stamps collected`;
-    $("ring").style.setProperty("--p", pct);
-    $("pct").textContent = pct + "%";
-    codes.forEach((c, i) => {
-      const li = document.createElement("li");
-      li.className = "stamp" + (flags[i] ? " got" : "") + (c === agency ? " now" : "");
-      const k = document.createElement("div"); k.className = "seal"; k.textContent = c;
-      const a = document.createElement("span"); a.className = "nm"; a.textContent = AGENCIES[c];
-      li.setAttribute("aria-label", `${AGENCIES[c]}: ${flags[i] ? "stamped" : "not yet stamped"}`);
-      li.append(k, a); $("list").append(li);
-    });
+    const ref = doc(db, "visits", `${pid}_${agency}_${round}`);
+    let fresh = true;
+    try {
+      await setDoc(ref, { pid, agency, round, ts: serverTimestamp() });
+    } catch (e) {
+      if (e.code !== "permission-denied") throw e;
+      if (!(await getDoc(ref)).exists()) throw e; // a real rules problem, not "already stamped"
+      fresh = false;
+    }
+    if (!have.includes(agency)) have.push(agency);
+    save();
+    $("vtitle").textContent = fresh ? `Visit recorded: ${AGENCIES[agency]}` : `Already recorded at ${AGENCIES[agency]}`;
+    $("vsub").textContent = fresh ? `Participant code ${pid}` : "No need to scan this one again.";
+
+    const showStamps = () => {
+      const flags = codes.map(c => have.includes(c));
+      const n = flags.filter(Boolean).length;
+      const pct = Math.round((n / TOTAL) * 100);
+      $("count").textContent = `${n} of ${TOTAL} stamps collected`;
+      $("ring").style.setProperty("--p", pct);
+      $("pct").textContent = pct + "%";
+      $("list").textContent = "";
+      codes.forEach((c, i) => {
+        const li = document.createElement("li");
+        li.className = "stamp" + (flags[i] ? " got" : "") + (c === agency ? " now" : "");
+        const k = document.createElement("div"); k.className = "seal"; k.textContent = c;
+        const a = document.createElement("span"); a.className = "nm"; a.textContent = AGENCIES[c];
+        li.setAttribute("aria-label", `${AGENCIES[c]}: ${flags[i] ? "stamped" : "not yet stamped"}`);
+        li.append(k, a); $("list").append(li);
+      });
+    };
+    showStamps();
     $("tally").hidden = false;
+
+    // Rebuild the checklist from the server (for a new phone, or after data was cleared).
+    $("resync").onclick = async () => {
+      $("resync").disabled = true;
+      try {
+        const vs = await getDocs(query(collection(db, "visits"), where("pid", "==", pid), where("round", "==", round)));
+        have.length = 0; vs.forEach(d => have.push(d.data().agency));
+        save(); showStamps();
+      } catch (e) { console.error(e); }
+      $("resync").disabled = false;
+    };
   } catch (e) {
     console.error(e);
     $("vtitle").textContent = "Couldn't record your visit";
@@ -494,7 +512,7 @@ function admin() {
     charts[id] = new Chart($(id), cfg);
   };
 
-  // Numbers come from cheap count queries (about 1 read each), refreshed every 2 minutes.
+  // Numbers come from cheap count queries (about 1 read each), refreshed every 30 seconds.
   let cur = 1, sel = "cur", counts = {}, total = 0, registered = 0, people = [], detail = null;
   const roundNow = () => (sel === "cur" ? cur : sel);
   const visitsQ = (...f) => query(collection(db, "visits"), ...f);
@@ -710,7 +728,7 @@ function admin() {
   $("refresh").onclick = loadStats;
   $("psearch").oninput = renderPeople; $("pretry").onclick = loadPeople;
   document.addEventListener("visibilitychange", () => { if (!document.hidden) loadStats(); });
-  setInterval(() => { if (!document.hidden) loadStats(); }, 120000);
+  setInterval(() => { if (!document.hidden) loadStats(); }, 30000);
   loadStats();
 }
 </script>
