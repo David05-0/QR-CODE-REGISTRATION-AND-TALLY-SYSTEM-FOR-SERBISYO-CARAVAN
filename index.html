@@ -216,6 +216,7 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
     <p class="sub noprint">"Start new round" restarts the tally from zero and keeps earlier rounds, which you can view from the dropdown. "Delete round" permanently removes the round currently selected in the dropdown.</p>
     <p class="msg" id="amsg" role="alert" style="margin:0 0 12px"></p>
     <div class="stats">
+      <div class="stat"><b id="nreg">0</b><span>Registered</span></div>
       <div class="stat"><b id="nv">0</b><span>Total visits</span></div>
       <div class="stat"><b id="np">0</b><span>Participants with a visit</span></div>
       <div class="stat"><b id="nall">0</b><span>Visited every agency</span></div>
@@ -237,7 +238,7 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, getDocs, onSnapshot, writeBatch, collection, serverTimestamp }
+import { getFirestore, doc, getDoc, setDoc, getDocs, onSnapshot, writeBatch, increment, collection, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ===== CONFIG: edit these ===== */
@@ -343,6 +344,8 @@ function register() {
         name: $("name").value.trim(), mobile: $("mobile").value.trim(),
         org: $("org").value.trim(), createdAt: serverTimestamp(),
       });
+      try { await setDoc(doc(db, "config", "registered"), { n: increment(1) }, { merge: true }); }
+      catch (e) { console.error("registered counter", e); }
       localStorage.setItem("participantId", id);
       await finishUp(id);
     } catch (err) {
@@ -581,6 +584,7 @@ function admin() {
   const onErr = e => { console.error(e); $("live").textContent = "Offline"; $("aerr").textContent = "Could not load the tally. Check the Firestore rules."; };
   onSnapshot(doc(db, "config", "round"), s => { cur = s.exists() ? s.data().n : 1; fillSel(); refresh(); }, onErr);
   onSnapshot(collection(db, "visits"), s => { all = s.docs.map(d => d.data()); fillSel(); refresh(); }, onErr);
+  onSnapshot(doc(db, "config", "registered"), s => { $("nreg").textContent = s.exists() ? s.data().n : 0; }, onErr);
 }
 </script>
 </body>
