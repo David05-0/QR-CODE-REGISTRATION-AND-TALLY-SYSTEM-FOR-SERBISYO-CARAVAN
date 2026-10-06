@@ -143,11 +143,10 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
     <div class="code" id="mycode"></div>
     <p id="afterMsg">Now scan an agency's QR code to record your visit.</p>
     <div id="closeRow" hidden>
-      <p id="cdline">This page will close in <strong id="cd">10</strong> seconds.</p>
+      <p id="cdline">This site is closing in <strong id="cd">10</strong> seconds.</p>
       <button class="full" id="closeNow">Close page now</button>
       <button class="full ghost" id="stay">Keep this page open</button>
     </div>
-    <button class="full" id="next" hidden>Continue</button>
   </div>
 </main>
 </div>
@@ -305,10 +304,24 @@ function register() {
     // Browsers often refuse to close a tab the page didn't open itself.
     setTimeout(() => { $("closeRow").textContent = "You're all set. You can close this page now."; }, 400);
   };
-  const showDone = id => {
+  const finishUp = async id => {
+    const ag = nextUrl ? (new URL(nextUrl).searchParams.get("agency") || "").toUpperCase() : "";
+    let note = "";
+    if (AGENCIES[ag]) {
+      try {
+        const rs = await getDoc(doc(db, "config", "round"));
+        const round = rs.exists() ? rs.data().n : 1;
+        const ref = doc(db, "visits", `${id}_${ag}_${round}`);
+        if (!(await getDoc(ref)).exists()) await setDoc(ref, { pid: id, agency: ag, round, ts: serverTimestamp() });
+        note = `Your visit to ${AGENCIES[ag]} is recorded.`;
+      } catch (e) { console.error(e); note = `We couldn't record your visit to ${AGENCIES[ag]}. Scan its QR code again.`; }
+    }
+    showDone(id, note);
+  };
+  const showDone = (id, note) => {
     $("reg").hidden = true; $("recwrap").hidden = true;
     $("mycode").textContent = id; $("done").hidden = false;
-    if (nextUrl) { $("afterMsg").hidden = true; $("next").hidden = false; $("next").onclick = finish; return; }
+    if (note) $("afterMsg").textContent = note;
     $("closeRow").hidden = false;
     $("closeNow").onclick = closeNow;
     $("stay").onclick = () => { clearTimeout(timer); $("cdline").hidden = true; $("stay").hidden = true; };
@@ -331,7 +344,7 @@ function register() {
         org: $("org").value.trim(), createdAt: serverTimestamp(),
       });
       localStorage.setItem("participantId", id);
-      showDone(id);
+      await finishUp(id);
     } catch (err) {
       console.error(err);
       $("msg").textContent = "Registration failed. Check your connection and try again.";
@@ -346,7 +359,7 @@ function register() {
       const snap = id && await getDoc(doc(db, "participants", id));
       if (!snap || !snap.exists()) { $("rmsg").textContent = "Code not found. Check it and try again."; return; }
       localStorage.setItem("participantId", id);
-      if (nextUrl) finish(); else showDone(id);
+      await finishUp(id);
     } catch (err) { console.error(err); $("rmsg").textContent = "Could not check the code. Try again."; }
   });
 }
