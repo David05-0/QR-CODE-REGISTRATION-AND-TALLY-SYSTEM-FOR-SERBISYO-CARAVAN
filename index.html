@@ -94,6 +94,10 @@ th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
 th{color:var(--muted);font-weight:600;font-size:.88rem}
 select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;background:#fff}
 .live{color:var(--ok);font-weight:700}
+.people-tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:8px 0 10px}
+.people-tools input{flex:1;min-width:200px;width:auto;padding:10px 12px}
+.tablewrap{overflow-x:auto}
+#ptable{min-width:680px}
 .topbar{position:sticky;top:0;z-index:50;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 16px;background:#071C4D;color:#fff;border-bottom:1px solid rgba(255,255,255,.14)}
 .topbar b{font:800 1.1rem var(--display)}
 .menuwrap{position:relative}
@@ -233,6 +237,19 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
       <thead><tr><th>Agency</th><th>Visits</th><th>% of participants</th></tr></thead>
       <tbody id="ag"></tbody>
     </table>
+    <h2>Who registered <span id="pcount" style="color:var(--muted);font-weight:600"></span></h2>
+    <div class="people-tools">
+      <input id="psearch" type="search" placeholder="Search name, mobile, organization or code" aria-label="Search registrants">
+      <button class="ghost sm" id="pcsv">Download CSV</button>
+    </div>
+    <div class="msg" id="pmsg" role="alert" style="margin:0 0 10px"></div>
+    <button class="ghost sm" id="pretry" hidden style="margin-bottom:12px">Try again</button>
+    <div class="tablewrap">
+      <table id="ptable">
+        <thead><tr><th>Code</th><th>Name</th><th>Mobile</th><th>Barangay / organization</th><th>Registered</th><th>Stamps</th></tr></thead>
+        <tbody id="pbody"></tbody>
+      </table>
+    </div>
     <div class="msg" id="aerr" role="alert"></div>
   </section>
 </main>
@@ -508,7 +525,7 @@ function admin() {
         options: { scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
     } catch (e) { console.error(e); $("aerr").textContent = "Could not load the tally. Check the Firestore rules."; }
   }
-  let all = [], cur = 1, sel = "cur";
+  let all = [], cur = 1, sel = "cur", people = [], lastRows = [], stopPeople = null;
   const refresh = () => {
     const r = sel === "cur" ? cur : sel;
     const seen = new Set(), rows = [];
@@ -518,7 +535,7 @@ function admin() {
       const k = `${rd}|${v.pid}|${v.agency}`;
       if (!seen.has(k)) { seen.add(k); rows.push(v); }
     }
-    render(rows);
+    lastRows = rows; render(rows); renderPeople();
   };
   const fillSel = () => {
     const rounds = [...new Set([cur, ...all.map(v => v.round ?? 1)])].sort((a, b) => b - a);
@@ -606,9 +623,49 @@ function admin() {
     }
     $("delall").disabled = false;
   };
+  const stampsPer = () => { const m = {}; lastRows.forEach(v => { m[v.pid] = (m[v.pid] || 0) + 1; }); return m; };
+  const renderPeople = () => {
+    const per = stampsPer(), q = $("psearch").value.trim().toLowerCase();
+    const list = people.filter(p => !q || [p.id, p.name, p.mobile, p.org].some(x => String(x || "").toLowerCase().includes(q)));
+    $("pbody").textContent = "";
+    for (const p of list) {
+      const tr = document.createElement("tr");
+      const when = p.createdAt?.toDate?.();
+      const cells = [p.id, p.name, p.mobile, p.org || "",
+        when ? when.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "",
+        `${per[p.id] || 0} / ${TOTAL}`];
+      for (const t of cells) { const td = document.createElement("td"); td.textContent = t; tr.append(td); }
+      $("pbody").append(tr);
+    }
+  };
+  const watchPeople = () => {
+    stopPeople?.(); $("pmsg").textContent = ""; $("pretry").hidden = true;
+    stopPeople = onSnapshot(collection(db, "participants"), snap => {
+      people = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.createdAt?.seconds ?? 9e15) - (a.createdAt?.seconds ?? 9e15));
+      $("ptable").hidden = false; $("pcount").textContent = `(${people.length})`; renderPeople();
+    }, e => {
+      console.error(e); people = []; renderPeople(); $("ptable").hidden = true; $("pcount").textContent = "";
+      $("pmsg").textContent = e.code === "permission-denied"
+        ? "Registrant details are locked. In Firebase, set settings/admin: viewParticipants = true, then press Try again."
+        : "Could not load registrants. Check your connection.";
+      $("pretry").hidden = false;
+    });
+  };
+  const csvCell = v => { let t = String(v ?? ""); if (/^[=+\-@\t\r]/.test(t)) t = "'" + t; return '"' + t.replace(/"/g, '""') + '"'; };
+  $("pcsv").onclick = () => {
+    const per = stampsPer();
+    const rows = [["Code", "Name", "Mobile", "Barangay/organization", "Registered at", "Stamps (selected round)"],
+      ...people.map(p => [p.id, p.name, p.mobile, p.org || "", p.createdAt?.toDate?.().toLocaleString() || "", per[p.id] || 0])];
+    const blob = new Blob(["\ufeff" + rows.map(r => r.map(csvCell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "registered-participants.csv"; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  $("psearch").oninput = renderPeople; $("pretry").onclick = watchPeople;
   const onErr = e => { console.error(e); $("live").textContent = "Offline"; $("aerr").textContent = "Could not load the tally. Check the Firestore rules."; };
   onSnapshot(doc(db, "config", "round"), s => { cur = s.exists() ? s.data().n : 1; fillSel(); refresh(); }, onErr);
   onSnapshot(collection(db, "visits"), s => { all = s.docs.map(d => d.data()); fillSel(); refresh(); }, onErr);
+  watchPeople();
   onSnapshot(doc(db, "config", "registered"), s => { $("nreg").textContent = s.exists() ? s.data().n : 0; }, onErr);
 }
 </script>
