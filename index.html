@@ -16,7 +16,7 @@
 [hidden]{display:none!important}
 html{scroll-behavior:smooth}
 body{margin:0;font:16px/1.55 var(--body);color:var(--ink);background:var(--mist)}
-.hero{position:relative;z-index:2;color:#fff;padding:38px 20px 88px;
+.hero{position:relative;color:#fff;padding:38px 20px 88px;
   background:radial-gradient(circle at 88% -12%,rgba(242,183,5,.6),rgba(242,183,5,0) 36%),
   repeating-conic-gradient(from 0deg at 88% -12%,rgba(255,255,255,.07) 0 5deg,transparent 5deg 10deg),
   linear-gradient(165deg,var(--blue),#071C4D)}
@@ -27,7 +27,9 @@ body{margin:0;font:16px/1.55 var(--body);color:var(--ink);background:var(--mist)
 .hero p.sub{color:#CFD9F2;margin:0;max-width:46ch}
 main{max-width:520px;margin:0 auto;padding:0 16px 56px}
 main.wide{max-width:960px}
-main.pull{position:relative;margin-top:-56px}
+main.pull{position:relative;z-index:1;margin-top:-56px}
+.hero.wide{padding-bottom:40px}
+main.wide.pull{margin-top:0;padding-top:4px}
 main p.sub{color:var(--muted);margin:10px 0 18px}
 h2{font:800 1.3rem/1.2 var(--display);letter-spacing:-.01em;margin:32px 0 8px}
 .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px}
@@ -186,7 +188,7 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
 </div>
 <header class="hero wide"><div class="in">
   <h1 id="vh">QR codes and tally</h1>
-  <p class="sub">Print the QR codes and watch the tally update as people scan.</p>
+  <p class="sub" id="vsb">Print the QR codes and watch the tally update as people scan.</p>
 </div></header>
 <main class="wide pull">
 
@@ -511,11 +513,15 @@ function admin() {
   const VIEWS = { all: ["s-reg", "s-agency", "s-tally"], reg: ["s-reg"], agency: ["s-agency"], tally: ["s-tally"] };
   const NAMES = { all: "Menu", reg: "Registration QR", agency: "Agency QR codes", tally: "Tally" };
   const TITLES = { all: "QR codes and tally", reg: "Registration QR", agency: "Agency QR codes", tally: "Tally" };
+  const SUBS = { all: "Print the QR codes and watch the tally update as people scan.",
+    reg: "Post this where people first arrive. Everyone scans it once to register.",
+    agency: "One QR code for each booth. Download or print them.",
+    tally: "Live numbers that update as people scan." };
   const menu = $("menu"), btn = $("menuBtn");
   const closeMenu = () => { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); };
   const showView = v => {
     VIEWS.all.forEach(id => { $(id).hidden = !VIEWS[v].includes(id); });
-    $("menuLbl").textContent = NAMES[v]; $("vh").textContent = TITLES[v];
+    $("menuLbl").textContent = NAMES[v]; $("vh").textContent = TITLES[v]; $("vsb").textContent = SUBS[v];
     menu.querySelectorAll("button").forEach(b => b.setAttribute("aria-current", String(b.dataset.view === v)));
     closeMenu(); window.scrollTo(0, 0);
     requestAnimationFrame(() => Object.values(charts).forEach(c => c.resize()));
