@@ -44,6 +44,7 @@ button.ghost:hover{background:var(--blue);color:#fff}
 button.danger{color:var(--bad);border-color:var(--bad)}
 button.danger:hover{background:var(--bad);color:#fff}
 button.sm{padding:6px 12px;font-size:.9rem;border-radius:8px}
+select.f{width:100%;padding:14px;border-radius:12px;border-width:1.5px}
 button:focus-visible,a:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 button:disabled{opacity:.55;cursor:default}
 .full{width:100%;margin-top:20px}
@@ -97,7 +98,7 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
 .people-tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:8px 0 10px}
 .people-tools input{flex:1;min-width:200px;width:auto;padding:10px 12px}
 .tablewrap{overflow-x:auto}
-#ptable{min-width:680px}
+#ptable{min-width:1000px}
 .topbar{position:sticky;top:0;z-index:50;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 16px;background:#071C4D;color:#fff;border-bottom:1px solid rgba(255,255,255,.14)}
 .topbar b{font:800 1.1rem var(--display)}
 .menuwrap{position:relative}
@@ -129,8 +130,24 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
     <input id="name" required autocomplete="name">
     <label for="mobile">Mobile number</label>
     <input id="mobile" type="tel" required inputmode="tel" autocomplete="tel">
-    <label for="org">Barangay or organization <span style="font-weight:400">(optional)</span></label>
-    <input id="org">
+    <label for="address">Address</label>
+    <input id="address" required autocomplete="street-address" placeholder="Barangay, Municipality, Province">
+    <label for="utype">Are you an OFW or a beneficiary?</label>
+    <select id="utype" class="f" required>
+      <option value="">Select one</option>
+      <option value="OFW">OFW</option>
+      <option value="Beneficiary">Beneficiary</option>
+    </select>
+    <label for="sector">Land-based or sea-based?</label>
+    <select id="sector" class="f" required>
+      <option value="">Select one</option>
+      <option value="Land-based">Land-based (LB)</option>
+      <option value="Sea-based">Sea-based (SB)</option>
+    </select>
+    <div id="ofwWrap" hidden>
+      <label for="ofwName">Name of the OFW</label>
+      <input id="ofwName" autocomplete="off" placeholder="Full name of your OFW family member">
+    </div>
     <button class="full" id="go">Register</button>
     <div class="msg" id="msg" role="alert"></div>
   </form>
@@ -242,14 +259,14 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
     </table>
     <h2>Who registered <span id="pcount" style="color:var(--muted);font-weight:600"></span></h2>
     <div class="people-tools">
-      <input id="psearch" type="search" placeholder="Search name, mobile, organization or code" aria-label="Search registrants">
+      <input id="psearch" type="search" placeholder="Search name, mobile, address, OFW name or code" aria-label="Search registrants">
       <button class="ghost sm" id="pcsv">Download CSV</button>
     </div>
     <div class="msg" id="pmsg" role="alert" style="margin:0 0 10px"></div>
     <button class="ghost sm" id="pretry" style="margin-bottom:12px">Load registrants</button>
     <div class="tablewrap">
       <table id="ptable" hidden>
-        <thead><tr><th>Code</th><th>Name</th><th>Mobile</th><th>Barangay / organization</th><th>Registered</th><th>Stamps</th></tr></thead>
+        <thead><tr><th>Code</th><th>Name</th><th>Mobile</th><th>Address</th><th>OFW / Beneficiary</th><th>LB / SB</th><th>Name of OFW</th><th>Registered</th><th>Stamps</th></tr></thead>
         <tbody id="pbody"></tbody>
       </table>
     </div>
@@ -349,13 +366,21 @@ function register() {
     return s;
   };
 
+  $("utype").onchange = () => {
+    const b = $("utype").value === "Beneficiary";
+    $("ofwWrap").hidden = !b; $("ofwName").required = b;
+    if (!b) $("ofwName").value = "";
+  };
+
   $("reg").addEventListener("submit", async e => {
     e.preventDefault(); $("go").disabled = true; $("msg").textContent = "";
     try {
       const id = newCode();
       await setDoc(doc(db, "participants", id), {
         name: $("name").value.trim(), mobile: $("mobile").value.trim(),
-        org: $("org").value.trim(), createdAt: serverTimestamp(),
+        address: $("address").value.trim(), type: $("utype").value, sector: $("sector").value,
+        ofwName: $("utype").value === "Beneficiary" ? $("ofwName").value.trim() : "",
+        createdAt: serverTimestamp(),
       });
       try { await setDoc(doc(db, "config", "registered"), { n: increment(1) }, { merge: true }); }
       catch (e) { console.error("registered counter", e); }
@@ -635,12 +660,12 @@ function admin() {
   const stampText = p => (detail ? `${detail.per[p.id] || 0} / ${TOTAL}` : "\u2014");
   const renderPeople = () => {
     const q = $("psearch").value.trim().toLowerCase();
-    const list = people.filter(p => !q || [p.id, p.name, p.mobile, p.org].some(x => String(x || "").toLowerCase().includes(q)));
+    const list = people.filter(p => !q || [p.id, p.name, p.mobile, p.address, p.org, p.type, p.sector, p.ofwName].some(x => String(x || "").toLowerCase().includes(q)));
     $("pbody").textContent = "";
     for (const p of list) {
       const tr = document.createElement("tr");
       const when = p.createdAt?.toDate?.();
-      const cells = [p.id, p.name, p.mobile, p.org || "",
+      const cells = [p.id, p.name, p.mobile, p.address || p.org || "", p.type || "", p.sector || "", p.ofwName || "",
         when ? when.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "", stampText(p)];
       for (const t of cells) { const td = document.createElement("td"); td.textContent = t; tr.append(td); }
       $("pbody").append(tr);
@@ -664,8 +689,8 @@ function admin() {
   };
   const csvCell = v => { let t = String(v ?? ""); if (/^[=+\-@\t\r]/.test(t)) t = "'" + t; return '"' + t.replace(/"/g, '""') + '"'; };
   $("pcsv").onclick = () => {
-    const rows = [["Code", "Name", "Mobile", "Barangay/organization", "Registered at", "Stamps (selected round)"],
-      ...people.map(p => [p.id, p.name, p.mobile, p.org || "", p.createdAt?.toDate?.().toLocaleString() || "", detail ? detail.per[p.id] || 0 : ""])];
+    const rows = [["Code", "Name", "Mobile", "Address", "OFW/Beneficiary", "LB/SB", "Name of OFW", "Registered at", "Stamps (selected round)"],
+      ...people.map(p => [p.id, p.name, p.mobile, p.address || p.org || "", p.type || "", p.sector || "", p.ofwName || "", p.createdAt?.toDate?.().toLocaleString() || "", detail ? detail.per[p.id] || 0 : ""])];
     const blob = new Blob(["\ufeff" + rows.map(r => r.map(csvCell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "registered-participants.csv"; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
