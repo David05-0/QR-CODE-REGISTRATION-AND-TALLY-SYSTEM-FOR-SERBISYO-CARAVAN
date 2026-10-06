@@ -87,6 +87,11 @@ nav a:hover{background:var(--brand);color:#fff}
     <p>Your participant code (save or screenshot it):</p>
     <div class="code" id="mycode"></div>
     <p id="afterMsg">Now scan an agency's QR code to record your visit.</p>
+    <div id="closeRow" hidden>
+      <p id="cdline">This page will close in <strong id="cd">10</strong> seconds.</p>
+      <button class="full" id="closeNow">Close page now</button>
+      <button class="full ghost" id="stay">Keep this page open</button>
+    </div>
     <button class="full" id="next" hidden>Continue</button>
   </div>
 </main>
@@ -132,7 +137,7 @@ nav a:hover{background:var(--brand);color:#fff}
   <section class="noprint" id="s-tally">
     <div class="sec-head">
       <h2>3. Tally</h2>
-      <span class="live" id="live">&#9679; Live</span>
+      <span class="noprint"><span class="live" id="live">&#9679; Live</span> &nbsp; <button class="ghost sm" id="reset">Reset visits</button></span>
     </div>
     <div class="stats">
       <div class="stat"><b id="nv">0</b><span>Total visits</span></div>
@@ -155,7 +160,7 @@ nav a:hover{background:var(--brand);color:#fff}
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, getDocs, onSnapshot, collection, serverTimestamp }
+import { getFirestore, doc, getDoc, setDoc, getDocs, onSnapshot, writeBatch, collection, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ===== CONFIG: edit these ===== */
@@ -199,6 +204,24 @@ function register() {
   try { const u = new URL(next, location.href); if (u.origin === location.origin) nextUrl = u.href; } catch {}
 
   const finish = () => { if (nextUrl) location.href = nextUrl; };
+
+  let timer;
+  const closeNow = () => {
+    clearTimeout(timer); window.close();
+    // Browsers often refuse to close a tab the page didn't open itself.
+    setTimeout(() => { $("closeRow").textContent = "You're all set. You can close this page now."; }, 400);
+  };
+  const showDone = id => {
+    $("reg").hidden = true; $("recwrap").hidden = true;
+    $("mycode").textContent = id; $("done").hidden = false;
+    if (nextUrl) { $("afterMsg").hidden = true; $("next").hidden = false; $("next").onclick = finish; return; }
+    $("closeRow").hidden = false;
+    $("closeNow").onclick = closeNow;
+    $("stay").onclick = () => { clearTimeout(timer); $("cdline").hidden = true; $("stay").hidden = true; };
+    let t = 10;
+    const tick = () => { $("cd").textContent = t; if (t-- <= 0) closeNow(); else timer = setTimeout(tick, 1000); };
+    tick();
+  };
   const newCode = () => {
     const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
     let s = ""; for (const n of crypto.getRandomValues(new Uint8Array(6))) s += chars[n % chars.length];
@@ -214,9 +237,7 @@ function register() {
         org: $("org").value.trim(), createdAt: serverTimestamp(),
       });
       localStorage.setItem("participantId", id);
-      $("reg").hidden = true; $("recwrap").hidden = true;
-      $("mycode").textContent = id; $("done").hidden = false;
-      if (nextUrl) { $("afterMsg").hidden = true; $("next").hidden = false; $("next").onclick = finish; }
+      showDone(id);
     } catch (err) {
       console.error(err);
       $("msg").textContent = "Registration failed. Check your connection and try again.";
@@ -231,8 +252,7 @@ function register() {
       const snap = id && await getDoc(doc(db, "participants", id));
       if (!snap || !snap.exists()) { $("rmsg").textContent = "Code not found. Check it and try again."; return; }
       localStorage.setItem("participantId", id);
-      if (nextUrl) finish();
-      else { $("reg").hidden = true; $("recwrap").hidden = true; $("mycode").textContent = id; $("done").hidden = false; }
+      if (nextUrl) finish(); else showDone(id);
     } catch (err) { console.error(err); $("rmsg").textContent = "Could not check the code. Try again."; }
   });
 }
@@ -369,6 +389,24 @@ function admin() {
         options: { scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
     } catch (e) { console.error(e); $("aerr").textContent = "Could not load the tally. Check the Firestore rules."; }
   }
+  $("reset").onclick = async () => {
+    if (prompt("This deletes ALL recorded visits and restarts the tally.\nRegistered participants and their codes are kept.\n\nType RESET to confirm.") !== "RESET") return;
+    $("reset").disabled = true; $("aerr").textContent = "";
+    try {
+      const snap = await getDocs(collection(db, "visits"));
+      for (let i = 0; i < snap.docs.length; i += 400) {
+        const b = writeBatch(db);
+        snap.docs.slice(i, i + 400).forEach(d => b.delete(d.ref));
+        await b.commit();
+      }
+    } catch (e) {
+      console.error(e);
+      $("aerr").textContent = e.code === "permission-denied"
+        ? "Reset is locked. In Firebase, create the document settings/admin with resetEnabled = true, then try again."
+        : "Reset failed. Check your connection and try again.";
+    }
+    $("reset").disabled = false;
+  };
   onSnapshot(collection(db, "visits"), render, e => {
     console.error(e); $("live").textContent = "Offline"; $("aerr").textContent = "Could not load the tally. Check the Firestore rules.";
   });
