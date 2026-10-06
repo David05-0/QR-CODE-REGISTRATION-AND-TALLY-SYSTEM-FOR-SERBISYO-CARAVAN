@@ -331,6 +331,7 @@ const queueBg = (item, jitter = 300) => {
   setOut([...outbox(), item]); setTimeout(flush, Math.random() * jitter);
   return item.qid;
 };
+const waitResult = (qid, ms) => new Promise(res => { const t0 = Date.now(), i = setInterval(() => { if (results[qid] || Date.now() - t0 > ms) { clearInterval(i); res(results[qid]); } }, 100); });
 const whenSynced = () => new Promise(res => { const i = setInterval(() => { if (!outbox().length) { clearInterval(i); res(); } else flush(); }, 500); });
 addEventListener("online", flush); setInterval(flush, 5000); flush();
 
@@ -487,7 +488,9 @@ async function visit() {
     const have = st.stamps[round] = st.stamps[round] || [];
 
     const fresh = !have.includes(agency); // the phone already knows what it has stamped
-    const qid = queueBg(fresh ? { action: "visit", pid, agency } : { action: "check" });
+    const qid = queueBg(fresh ? { action: "visit", pid, agency } : { action: "check", pid });
+    // Online: confirm with the sheet BEFORE showing anything, so a cleared registration never shows old stamps.
+    if (navigator.onLine) { await waitResult(qid, 2500); if (!localStorage.getItem("participantId")) return; }
     if (!have.includes(agency)) have.push(agency);
     save();
     $("vtitle").textContent = fresh ? `Visit recorded: ${AGENCIES[agency]}` : `Already recorded at ${AGENCIES[agency]}`;
