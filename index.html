@@ -48,6 +48,11 @@ th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line)}
 .chart .box{position:relative;height:260px}
 .sec-head{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:2px solid var(--brand);margin-top:32px;padding-bottom:6px}
 .sec-head h2{margin:0}
+html{scroll-behavior:smooth}
+nav{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+nav a{padding:8px 14px;border:1px solid var(--brand);border-radius:20px;color:var(--brand);text-decoration:none;font-weight:600;font-size:.95rem}
+nav a:hover{background:var(--brand);color:#fff}
+#regqr .card{display:inline-block;padding:24px}
 @media print{.noprint{display:none!important}body{background:#fff}}
 </style>
 </head>
@@ -100,17 +105,32 @@ th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line)}
 <!-- ADMIN -->
 <main id="v-admin" class="wide" hidden>
   <h1>Admin</h1>
-  <section>
+  <nav class="noprint">
+    <a href="#s-reg">1. Registration QR</a>
+    <a href="#s-agency">2. Agency QR codes</a>
+    <a href="#s-tally">3. Tally</a>
+  </nav>
+
+  <section id="s-reg">
     <div class="sec-head">
-      <h2>QR codes</h2>
-      <button class="ghost noprint" onclick="window.print()">Print QR codes</button>
+      <h2>1. Registration QR</h2>
+      <button class="ghost noprint" onclick="window.print()">Print</button>
     </div>
-    <p class="sub"><strong id="qn"></strong> QR codes: 1 registration and <strong id="qa"></strong> agencies. The number under each agency is its recorded visits.</p>
+    <p class="sub">Post this one where people first arrive. Everyone scans it once to register.</p>
+    <div id="regqr"></div>
+  </section>
+
+  <section id="s-agency">
+    <div class="sec-head">
+      <h2>2. Agency QR codes</h2>
+      <button class="ghost noprint" onclick="window.print()">Print all</button>
+    </div>
+    <p class="sub"><strong id="qa"></strong> agency QR codes, one per booth. The number under each is its recorded visits.</p>
     <div class="qrs" id="qrs"></div>
   </section>
-  <section class="noprint">
+  <section class="noprint" id="s-tally">
     <div class="sec-head">
-      <h2>Tally</h2>
+      <h2>3. Tally</h2>
       <button class="ghost" id="refresh">Refresh</button>
     </div>
     <div class="stats">
@@ -259,18 +279,18 @@ async function visit() {
 /* ---------- ADMIN ---------- */
 function admin() {
   const BRAND = "#0f4c5c";
-  $("qn").textContent = TOTAL + 1; $("qa").textContent = TOTAL;
+  $("qa").textContent = TOTAL;
   const countEls = {};
 
-  function addCard(label, url, code, file) {
+  function addCard(label, url, code, file, parent, size) {
     const card = document.createElement("div"); card.className = "card";
     const h = document.createElement("strong"); h.textContent = label;
     const q = document.createElement("div"); q.className = "qr";
     card.append(h, q);
     if (code) { const n = document.createElement("span"); n.className = "n"; n.textContent = "0 visits"; card.append(n); countEls[code] = n; }
     const b = document.createElement("button"); b.className = "ghost sm noprint"; b.textContent = "Download PNG";
-    card.append(b); $("qrs").append(card);
-    new QRCode(q, { text: url, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
+    card.append(b); parent.append(card);
+    new QRCode(q, { text: url, width: size, height: size, correctLevel: QRCode.CorrectLevel.M });
     b.onclick = () => { // re-render larger with a white border
       const tmp = document.createElement("div");
       new QRCode(tmp, { text: url, width: 640, height: 640, correctLevel: QRCode.CorrectLevel.M });
@@ -282,8 +302,8 @@ function admin() {
       }, 50);
     };
   }
-  addCard("Registration", REG_URL, null, "registration-qr");
-  for (const c of codes) addCard(AGENCIES[c], `${BASE}?agency=${c}`, c, `qr-${c.toLowerCase()}`);
+  addCard("Scan to register", REG_URL, null, "registration-qr", $("regqr"), 280);
+  for (const c of codes) addCard(AGENCIES[c], `${BASE}?agency=${c}`, c, `qr-${c.toLowerCase()}`, $("qrs"), 180);
 
   const charts = {};
   const draw = (id, cfg) => {
