@@ -94,6 +94,11 @@ th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
 th{color:var(--muted);font-weight:600;font-size:.88rem}
 select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;background:#fff}
 .live{color:var(--ok);font-weight:700}
+.evrow{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px}
+.evrow b{font:800 1.05rem var(--display)}
+.evrow small{display:block;color:var(--muted)}
+.evrow .acts{display:flex;gap:8px;flex-wrap:wrap}
+.tag{display:inline-block;margin-left:8px;padding:2px 10px;border-radius:999px;font-size:.78rem;font-weight:700;background:var(--gold-soft);color:var(--blue)}
 textarea{width:100%;padding:14px;font:inherit;border:1.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);resize:vertical}
 textarea:focus{outline:none;border-color:var(--blue-2);box-shadow:0 0 0 3px rgba(20,64,154,.2)}
 #fields select,.card select.fld{width:100%;padding:14px;font:inherit;border:1.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink)}
@@ -197,6 +202,7 @@ textarea:focus{outline:none;border-color:var(--blue-2);box-shadow:0 0 0 3px rgba
     <li><button data-view="reg">Registration QR</button></li>
     <li><button data-view="agency">Station QR codes</button></li>
     <li><button data-view="tally">Tally</button></li>
+    <li><button data-view="events">Events</button></li>
     <li><button data-view="setup">Event setup</button></li>
     <li><button data-view="maker">QR maker</button></li>
   </ul>
@@ -266,6 +272,13 @@ textarea:focus{outline:none;border-color:var(--blue-2);box-shadow:0 0 0 3px rgba
     <div class="msg" id="aerr" role="alert"></div>
   </section>
 
+  <section class="noprint" id="s-events">
+    <div class="sec-head"><h2>Events</h2><button class="ghost sm" id="newEvent">New event</button></div>
+    <p class="sub">Every event keeps its own setup, registrations, stamps and QR codes, so a new event never overwrites an old one. Opening an event here only changes what this admin page shows. "Make active" decides which event the plain site link uses.</p>
+    <div id="evList"></div>
+    <div class="msg" id="emsg" role="alert"></div>
+  </section>
+
   <section class="noprint" id="s-setup">
     <div class="sec-head"><h2>Event setup</h2></div>
     <p class="sub">Set the event name, the stations people visit, and the questions they answer when registering. Change these to reuse the system for any event.</p>
@@ -279,7 +292,9 @@ textarea:focus{outline:none;border-color:var(--blue-2);box-shadow:0 0 0 3px rgba
       <p class="hint" style="margin:0 0 6px">Tip: to ask a follow-up only for certain answers, put a "pick from a list" question above it, then set the follow-up to "Show only if…".</p>
       <div id="evFields"></div>
       <button class="ghost sm" id="addField" type="button">+ Add a question</button>
-      <button class="full" id="saveSetup">Save event setup</button>
+      <button class="full" id="saveSetup">Save changes to this event</button>
+      <button class="full ghost" id="saveNew">Save as a new event</button>
+      <p class="hint">"Save as a new event" leaves the current event exactly as it is and creates another one with these settings.</p>
       <div class="msg" id="smsg" role="alert"></div>
     </div>
   </section>
@@ -359,34 +374,48 @@ const EV_DEFAULT = {
   stations: Object.entries(DEFAULT_AGENCIES).map(([code, name]) => ({ code, name })),
   fields: DEFAULT_FIELDS,
 };
-// Event name, stations and registration questions come from Firestore (set in Admin > Event setup).
-// Phones cache them for 10 minutes so this costs about one read per phone per 10 minutes.
-async function loadEvent(fresh) {
-  const cached = () => { try { return JSON.parse(localStorage.getItem("eventCfg") || "null"); } catch { return null; } };
+// Every event has its own setup (events/ID), registrations, stamps and QR codes.
+// Phones cache the event for 10 minutes, so this costs about one read per phone per 10 minutes.
+const evCache = k => { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch { return null; } };
+async function resolveEventId(fresh) {
+  const fromUrl = Q.get("event");
+  if (fromUrl) return fromUrl;
+  const c = evCache("activeEv");
+  if (!fresh && c && Date.now() - c.t < 600000) return c.id;
   try {
-    const c = cached();
-    if (!fresh && c && Date.now() - c.t < 600000) return c.v;
-    const snap = await getDoc(doc(db, "config", "event"));
+    const a = await getDoc(doc(db, "config", "active"));
+    const id = a.exists() && a.data().id ? a.data().id : "default";
+    localStorage.setItem("activeEv", JSON.stringify({ t: Date.now(), id }));
+    return id;
+  } catch (e) { console.error(e); return c?.id || "default"; }
+}
+async function loadEvent(id, fresh) {
+  const key = "eventCfg:" + id, c = evCache(key);
+  if (!fresh && c && Date.now() - c.t < 600000) return c.v;
+  try {
+    let snap = await getDoc(doc(db, "events", id));
+    if (!snap.exists() && id === "default") snap = await getDoc(doc(db, "config", "event")); // setup saved before events existed
+    if (!snap.exists() && id !== "default") return null;
     const d = snap.exists() ? snap.data() : {};
     const v = {
       name: d.name || EV_DEFAULT.name,
       stations: Array.isArray(d.stations) && d.stations.length ? d.stations : EV_DEFAULT.stations,
       fields: Array.isArray(d.fields) && d.fields.length ? d.fields : EV_DEFAULT.fields,
     };
-    localStorage.setItem("eventCfg", JSON.stringify({ t: Date.now(), v }));
+    localStorage.setItem(key, JSON.stringify({ t: Date.now(), v }));
     return v;
-  } catch (e) {
-    console.error(e);
-    return cached()?.v || EV_DEFAULT;
-  }
+  } catch (e) { console.error(e); return c?.v || (id === "default" ? EV_DEFAULT : null); }
 }
 let EV, AGENCIES, codes, TOTAL;
-const REG_URL = BASE + "?page=register";
-const pid = localStorage.getItem("participantId");
+let EVID, REG_URL, pid;
 
 (async () => {
   const page = Q.get("page");
-  EV = await loadEvent(page === "admin");
+  EVID = await resolveEventId(page === "admin" && !Q.get("event"));
+  EV = await loadEvent(EVID, page === "admin");
+  if (!EV) { document.body.textContent = "This QR code is not linked to an event. Please ask the staff."; return; }
+  REG_URL = `${BASE}?page=register&event=${encodeURIComponent(EVID)}`;
+  pid = localStorage.getItem("participantId:" + EVID);
   AGENCIES = Object.fromEntries(EV.stations.map(s => [s.code, s.name]));
   codes = Object.keys(AGENCIES); TOTAL = codes.length;
   document.title = EV.name;
@@ -469,13 +498,13 @@ function register() {
     e.preventDefault(); $("go").disabled = true; $("msg").textContent = "";
     try {
       const id = newCode();
-      const data = { createdAt: serverTimestamp() };
+      const data = { createdAt: serverTimestamp(), event: EVID };
       EV.fields.forEach(f => { if (els[f.key].show) data[f.key] = String($("f_" + f.key).value || "").trim(); });
       await setDoc(doc(db, "participants", id), data);
-      try { await setDoc(doc(db, "config", "registered"), { n: increment(1) }, { merge: true }); }
+      try { await setDoc(doc(db, "counters", EVID), { n: increment(1) }, { merge: true }); }
       catch (e) { console.error("registered counter", e); }
-      localStorage.setItem("participantId", id);
-      localStorage.setItem("stampStore", JSON.stringify({ pid: id, vt: Date.now(), stamps: {} }));
+      localStorage.setItem("participantId:" + EVID, id);
+      localStorage.setItem("stampStore:" + EVID, JSON.stringify({ pid: id, vt: Date.now(), stamps: {} }));
       await finishUp(id);
     } catch (err) {
       console.error(err);
@@ -489,14 +518,14 @@ function register() {
     const id = $("code").value.trim().toUpperCase();
     try {
       const snap = id && await getDoc(doc(db, "participants", id));
-      if (!snap || !snap.exists()) { $("rmsg").textContent = "Code not found. Check it and try again."; return; }
-      localStorage.setItem("participantId", id);
+      if (!snap || !snap.exists() || (snap.data().event || "default") !== EVID) { $("rmsg").textContent = "Code not found. Check it and try again."; return; }
+      localStorage.setItem("participantId:" + EVID, id);
       const stamps = {};
       try {
         const vs = await getDocs(query(collection(db, "visits"), where("pid", "==", id)));
         vs.forEach(d => { const v = d.data(), r = String(v.round ?? 1); (stamps[r] = stamps[r] || []).push(v.agency); });
       } catch (e) { console.error(e); }
-      localStorage.setItem("stampStore", JSON.stringify({ pid: id, vt: Date.now(), stamps }));
+      localStorage.setItem("stampStore:" + EVID, JSON.stringify({ pid: id, vt: Date.now(), stamps }));
       await finishUp(id);
     } catch (err) { console.error(err); $("rmsg").textContent = "Could not check the code. Try again."; }
   });
@@ -516,21 +545,21 @@ async function visit() {
 
   // The phone remembers the checklist, but the server is always asked to record the scan.
   let st = {};
-  try { st = JSON.parse(localStorage.getItem("stampStore") || "{}"); } catch {}
+  try { st = JSON.parse(localStorage.getItem("stampStore:" + EVID) || "{}"); } catch {}
   if (st.pid !== pid) st = { pid };
-  const save = () => localStorage.setItem("stampStore", JSON.stringify(st));
+  const save = () => localStorage.setItem("stampStore:" + EVID, JSON.stringify(st));
 
   try {
     // Re-check the registration about every 10 minutes (catches cleared data).
     if (!st.vt || Date.now() - st.vt > 600000) {
       if (!(await getDoc(doc(db, "participants", pid))).exists()) {
-        localStorage.removeItem("participantId"); localStorage.removeItem("stampStore");
+        localStorage.removeItem("participantId:" + EVID); localStorage.removeItem("stampStore:" + EVID);
         return toRegister();
       }
       st.vt = Date.now();
     }
     if (!st.round || Date.now() - st.round.t > 600000) {
-      const rs = await getDoc(doc(db, "config", "round"));
+      const rs = await getDoc(doc(db, "rounds", EVID));
       st.round = { n: rs.exists() ? rs.data().n : 1, t: Date.now() };
     }
     const round = st.round.n;
@@ -540,7 +569,7 @@ async function visit() {
     const ref = doc(db, "visits", `${pid}_${agency}_${round}`);
     let fresh = true;
     try {
-      await setDoc(ref, { pid, agency, round, ts: serverTimestamp() });
+      await setDoc(ref, { pid, event: EVID, agency, round, ts: serverTimestamp() });
     } catch (e) {
       if (e.code !== "permission-denied") throw e;
       if (!(await getDoc(ref)).exists()) throw e; // a real rules problem, not "already stamped"
@@ -616,7 +645,7 @@ function admin() {
     };
   }
   addCard("Scan to register", REG_URL, null, "registration-qr", $("regqr"), 280);
-  for (const c of codes) addCard(AGENCIES[c], `${BASE}?agency=${c}`, c, `qr-${c.toLowerCase()}`, $("qrs"), 180);
+  for (const c of codes) addCard(AGENCIES[c], `${BASE}?event=${encodeURIComponent(EVID)}&agency=${c}`, c, `qr-${c.toLowerCase()}`, $("qrs"), 180);
 
   const charts = {};
   const draw = (id, cfg) => {
@@ -628,17 +657,18 @@ function admin() {
   // Numbers come from cheap count queries (about 1 read each), refreshed every 30 seconds.
   let cur = 1, sel = "cur", counts = {}, total = 0, registered = 0, people = [], detail = null;
   const roundNow = () => (sel === "cur" ? cur : sel);
-  const visitsQ = (...f) => query(collection(db, "visits"), ...f);
+  const visitsQ = (...f) => query(collection(db, "visits"), where("event", "==", EVID), ...f);
   const roundFilter = r => (r === "all" ? [] : [where("round", "==", Number(r))]);
 
-  const ALL_IDS = ["s-reg", "s-agency", "s-tally", "s-setup", "s-maker"];
-  const VIEWS = { all: ["s-reg", "s-agency", "s-tally"], reg: ["s-reg"], agency: ["s-agency"], tally: ["s-tally"], setup: ["s-setup"], maker: ["s-maker"] };
-  const NAMES = { all: "Menu", reg: "Registration QR", agency: "Station QR codes", tally: "Tally", setup: "Event setup", maker: "QR maker" };
-  const TITLES = { all: "QR codes and tally", reg: "Registration QR", agency: "Station QR codes", tally: "Tally", setup: "Event setup", maker: "QR maker" };
+  const ALL_IDS = ["s-reg", "s-agency", "s-tally", "s-events", "s-setup", "s-maker"];
+  const VIEWS = { all: ["s-reg", "s-agency", "s-tally"], reg: ["s-reg"], agency: ["s-agency"], tally: ["s-tally"], events: ["s-events"], setup: ["s-setup"], maker: ["s-maker"] };
+  const NAMES = { all: "Menu", reg: "Registration QR", agency: "Station QR codes", tally: "Tally", events: "Events", setup: "Event setup", maker: "QR maker" };
+  const TITLES = { all: "QR codes and tally", reg: "Registration QR", agency: "Station QR codes", tally: "Tally", events: "Events", setup: "Event setup", maker: "QR maker" };
   const SUBS = { all: "Print the QR codes and watch the tally update as people scan.",
     reg: "Post this where people first arrive. Everyone scans it once to register.",
     agency: "One QR code for each booth. Download or print them.",
     tally: "Live numbers that update as people scan.",
+    events: "Every event keeps its own setup and data. Open or switch between them here.",
     setup: "Name your event, set its stations, and choose the registration questions.",
     maker: "Make a QR code for any link or text and download it." };
   const menu = $("menu"), btn = $("menuBtn");
@@ -692,7 +722,7 @@ function admin() {
   async function loadStats() {
     $("aerr").textContent = "";
     try {
-      const [rs, rg] = await Promise.all([getDoc(doc(db, "config", "round")), getDoc(doc(db, "config", "registered"))]);
+      const [rs, rg] = await Promise.all([getDoc(doc(db, "rounds", EVID)), getDoc(doc(db, "counters", EVID))]);
       cur = rs.exists() ? rs.data().n : 1;
       registered = rg.exists() ? rg.data().n : 0;
       fillSel();
@@ -718,7 +748,7 @@ function admin() {
     if (!confirm(`This reads every visit record once (about ${total}). The free daily quota is 50,000 reads. Continue?`)) return;
     $("detail").disabled = true; say("");
     try {
-      const snap = await getDocs(r === "all" ? collection(db, "visits") : visitsQ(...roundFilter(r)));
+      const snap = await getDocs(visitsQ(...roundFilter(r)));
       const per = {}, times = [], seen = new Set();
       snap.forEach(d => {
         const v = d.data(), k = `${v.pid}|${v.agency}|${v.round ?? 1}`;
@@ -767,7 +797,7 @@ function admin() {
   const loadPeople = async () => {
     $("pmsg").textContent = ""; $("pretry").disabled = true;
     try {
-      const snap = await getDocs(collection(db, "participants"));
+      const snap = await getDocs(query(collection(db, "participants"), where("event", "==", EVID)));
       people = snap.docs.map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (b.createdAt?.seconds ?? 9e15) - (a.createdAt?.seconds ?? 9e15));
       $("ptable").hidden = false; $("pcount").textContent = `(${people.length})`;
@@ -795,7 +825,7 @@ function admin() {
     if (prompt(`Start round ${cur + 1}? The tally restarts from zero.\nRound ${cur} data is kept (not deleted) and stays in the dropdown.\n\nType NEW to confirm.`) !== "NEW") { say("Cancelled: nothing changed."); return; }
     $("reset").disabled = true; say("");
     try {
-      await setDoc(doc(db, "config", "round"), { n: cur + 1 });
+      await setDoc(doc(db, "rounds", EVID), { n: cur + 1 });
       say(`Round ${cur + 1} started.`, true); sel = "cur"; resetDetail(); await loadStats();
     } catch (e) { console.error(e); say("Could not start a new round. Check that the latest Firestore rules are published."); }
     $("reset").disabled = false;
@@ -828,12 +858,12 @@ function admin() {
 
   $("delall").onclick = async () => {
     say("");
-    if (prompt(`Delete ALL records?\nThis permanently erases every visit (about ${total} shown), every registered participant, the registered counter, and all rounds. Participants will have to register again. It cannot be undone.\n\nType DELETE ALL to confirm.`) !== "DELETE ALL") { say("Cancelled: nothing was deleted."); return; }
+    if (prompt(`Delete ALL records of this event?\nThis permanently erases every visit (about ${total} shown), every registered participant, the registered counter, and all rounds. Participants will have to register again. It cannot be undone.\n\nType DELETE ALL to confirm.`) !== "DELETE ALL") { say("Cancelled: nothing was deleted."); return; }
     $("delall").disabled = true;
     try {
-      const [vs, ps] = await Promise.all([getDocs(collection(db, "visits")), getDocs(collection(db, "participants"))]);
+      const [vs, ps] = await Promise.all([getDocs(visitsQ()), getDocs(query(collection(db, "participants"), where("event", "==", EVID)))]);
       const refs = [...vs.docs, ...ps.docs].map(d => d.ref);
-      refs.push(doc(db, "config", "registered"), doc(db, "config", "round"));
+      refs.push(doc(db, "counters", EVID), doc(db, "rounds", EVID));
       await batchDelete(refs);
       people = []; $("ptable").hidden = true; $("pcount").textContent = "";
       say(`Deleted everything: ${vs.size} visit(s) and ${ps.size} participant(s).`, true); sel = "cur"; resetDetail(); await loadStats();
@@ -901,13 +931,15 @@ function admin() {
   $("addField").onclick = () => { draft.push({ key: "q" + Date.now().toString(36), label: "", type: "text", required: false, options: [] }); renderRows(); };
   const autoCode = nm => {
     const m = /\(([^)]{2,14})\)\s*$/.exec(nm);
-    return (m ? m[1] : nm).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) || "ST";
+    if (m) return m[1].toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) || "ST";
+    const words = nm.toUpperCase().replace(/[^A-Z0-9 ]/g, " ").split(/\s+/).filter(Boolean);
+    return words.length > 1 ? words.map(w => w[0]).join("").slice(0, 6) : (words[0] || "ST").slice(0, 8);
   };
   const smsg = (t, good) => { $("smsg").textContent = t; $("smsg").className = "msg" + (good ? " ok" : ""); };
-  $("saveSetup").onclick = async () => {
+  const collectSetup = () => {
     smsg("");
     const name = $("evName").value.trim();
-    if (!name) { smsg("Enter an event name."); return; }
+    if (!name) { smsg("Enter an event name."); return null; }
     const used = new Set(), stations = [];
     for (const l of $("evStations").value.split(/\r?\n/).map(x => x.trim()).filter(Boolean)) {
       const i = l.indexOf("|");
@@ -915,45 +947,103 @@ function admin() {
       let code = i >= 0 ? l.slice(0, i).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 14) : "";
       if (!nm) continue;
       if (!code) { const base = autoCode(nm); code = base; let k = 2; while (used.has(code)) code = base + k++; }
-      if (used.has(code)) { smsg(`The code ${code} is used twice. Each station needs its own code.`); return; }
+      if (used.has(code)) { smsg(`The code ${code} is used twice. Each station needs its own code.`); return null; }
       used.add(code); stations.push({ code, name: nm });
     }
-    if (!stations.length) { smsg("Add at least one station."); return; }
+    if (!stations.length) { smsg("Add at least one station."); return null; }
     const fields = draft.filter(f => f.label.trim()).map(f => ({
       key: f.key, label: f.label.trim(), type: f.type, required: !!f.required,
       ...(f.type === "choice" ? { options: f.options || [] } : {}),
       ...(f.showIf && f.showIf.key ? { showIf: { key: f.showIf.key, value: f.showIf.value } } : {}),
     }));
-    if (!fields.length) { smsg("Add at least one registration question."); return; }
+    if (!fields.length) { smsg("Add at least one registration question."); return null; }
     const bad = fields.find(f => f.type === "choice" && f.options.length < 2);
-    if (bad) { smsg(`Give "${bad.label}" at least two choices.`); return; }
+    if (bad) { smsg(`Give "${bad.label}" at least two choices.`); return null; }
     for (const [i, f] of fields.entries()) {
       if (!f.showIf) continue;
       const si = fields.findIndex(x => x.key === f.showIf.key), src = fields[si];
       if (!src || si >= i || src.type !== "choice" || !src.options.includes(f.showIf.value)) {
-        smsg(`Fix the "Show only if" setting on "${f.label}": pick a list question above it and one of its answers.`); return;
+        smsg(`Fix the "Show only if" setting on "${f.label}": pick a list question above it and one of its answers.`); return null;
       }
     }
+    return { name, stations, fields };
+  };
+  const setupError = e => {
+    console.error(e);
+    smsg(e.code === "permission-denied"
+      ? "Setup is locked. In Firebase, set settings/admin: setupEnabled = true (and publish the latest rules), then try again."
+      : "Could not save. Check your connection and try again.");
+  };
+  $("saveSetup").onclick = async () => {
+    const d = collectSetup(); if (!d) return;
     $("saveSetup").disabled = true;
     try {
-      await setDoc(doc(db, "config", "event"), { name, stations, fields });
-      localStorage.removeItem("eventCfg");
+      await setDoc(doc(db, "events", EVID), { ...d, updatedAt: serverTimestamp() }, { merge: true });
+      localStorage.removeItem("eventCfg:" + EVID);
       smsg("Saved. Reloading\u2026", true); setTimeout(() => location.reload(), 700);
-    } catch (e) {
-      console.error(e);
-      smsg(e.code === "permission-denied"
-        ? "Setup is locked. In Firebase, set settings/admin: setupEnabled = true (and publish the latest rules), then press Save again."
-        : "Could not save. Check your connection and try again.");
-      $("saveSetup").disabled = false;
-    }
+    } catch (e) { setupError(e); }
+    $("saveSetup").disabled = false;
   };
+  $("saveNew").onclick = async () => {
+    const d = collectSetup(); if (!d) return;
+    const id = (d.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) || "event") + "-" + Math.random().toString(36).slice(2, 6);
+    $("saveNew").disabled = true;
+    try {
+      await setDoc(doc(db, "events", id), { ...d, createdAt: serverTimestamp() });
+      await setDoc(doc(db, "config", "active"), { id });
+      localStorage.removeItem("activeEv");
+      smsg("New event created. Opening it\u2026", true);
+      setTimeout(() => { location.href = `${BASE}?page=admin&event=${encodeURIComponent(id)}`; }, 700);
+    } catch (e) { setupError(e); }
+    $("saveNew").disabled = false;
+  };
+  $("newEvent").onclick = () => {
+    draft = DEFAULT_FIELDS.map(f => ({ ...f, options: [] }));
+    $("evName").value = ""; $("evStations").value = ""; renderRows();
+    showView("setup");
+    smsg('New event: fill this in, then press "Save as a new event".', true);
+  };
+
+  // ----- Events list -----
+  const openEvent = id => { location.href = `${BASE}?page=admin&event=${encodeURIComponent(id)}`; };
+  const renderEvents = async () => {
+    $("emsg").textContent = "";
+    try {
+      const [snap, act] = await Promise.all([getDocs(collection(db, "events")), getDoc(doc(db, "config", "active"))]);
+      const activeId = act.exists() && act.data().id ? act.data().id : "default";
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (!list.some(e => e.id === "default")) list.push({ id: "default", name: EVID === "default" ? EV.name : EV_DEFAULT.name, stations: EVID === "default" ? EV.stations : EV_DEFAULT.stations, createdAt: { seconds: 0 } });
+      list.sort((a, b) => (a.createdAt?.seconds ?? 9e15) - (b.createdAt?.seconds ?? 9e15));
+      const box = $("evList"); box.textContent = "";
+      list.forEach(e => {
+        const row = document.createElement("div"); row.className = "evrow";
+        const left = document.createElement("div");
+        const b = document.createElement("b"); b.textContent = e.name || e.id; left.append(b);
+        if (e.id === EVID) { const t = document.createElement("span"); t.className = "tag"; t.textContent = "Open now"; left.append(t); }
+        if (e.id === activeId) { const t = document.createElement("span"); t.className = "tag"; t.textContent = "Active"; left.append(t); }
+        const sm = document.createElement("small"); sm.textContent = `${(e.stations || []).length} stations \u00b7 ${e.id}`; left.append(sm);
+        const acts = document.createElement("div"); acts.className = "acts";
+        if (e.id !== EVID) { const o = document.createElement("button"); o.className = "ghost sm"; o.textContent = "Open"; o.onclick = () => openEvent(e.id); acts.append(o); }
+        if (e.id !== activeId) {
+          const m = document.createElement("button"); m.className = "ghost sm"; m.textContent = "Make active";
+          m.onclick = async () => {
+            try { await setDoc(doc(db, "config", "active"), { id: e.id }); localStorage.removeItem("activeEv"); renderEvents(); }
+            catch (err) { console.error(err); $("emsg").textContent = err.code === "permission-denied" ? "Locked. In Firebase, set settings/admin: setupEnabled = true, then try again." : "Could not change the active event."; }
+          };
+          acts.append(m);
+        }
+        row.append(left, acts); box.append(row);
+      });
+    } catch (e) { console.error(e); $("emsg").textContent = "Could not load the events. Check your connection."; }
+  };
+  renderEvents();
 
   // ----- QR maker -----
   const mkmsg = t => { $("mkmsg").textContent = t; };
   const pick = $("mkPick");
   pick.add(new Option("Custom (type below)", ""));
   pick.add(new Option("Registration link", REG_URL));
-  EV.stations.forEach(s => pick.add(new Option(`Station: ${s.name}`, `${BASE}?agency=${s.code}`)));
+  EV.stations.forEach(s => pick.add(new Option(`Station: ${s.name}`, `${BASE}?event=${encodeURIComponent(EVID)}&agency=${s.code}`)));
   const mkRender = () => {
     mkmsg(""); $("mkQR").textContent = "";
     const t = $("mkText").value.trim();
