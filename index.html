@@ -94,6 +94,9 @@ th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
 th{color:var(--muted);font-weight:600;font-size:.88rem}
 select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;background:#fff}
 .live{color:var(--ok);font-weight:700}
+.stat b.flash{animation:flash .9s ease-out;border-radius:6px}
+@keyframes flash{from{background:var(--gold)}to{background:transparent}}
+@media(prefers-reduced-motion:reduce){.stat b.flash{animation:none}}
 .evrow{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px}
 .evrow b{font:800 1.05rem var(--display)}
 .evrow small{display:block;color:var(--muted)}
@@ -157,7 +160,7 @@ textarea:focus{outline:none;border-color:var(--blue-2);box-shadow:0 0 0 3px rgba
     </form>
   </div>
   <div id="done" class="card" hidden>
-    <p class="ok"><strong>You're registered.</strong></p>
+    <p class="ok"><strong id="doneT">You're registered.</strong></p>
     <p>Your participant code (save or screenshot it):</p>
     <div class="code" id="mycode"></div>
     <p id="afterMsg">Now scan a station's QR code to record your visit.</p>
@@ -234,7 +237,7 @@ textarea:focus{outline:none;border-color:var(--blue-2);box-shadow:0 0 0 3px rgba
   <section class="noprint" id="s-tally">
     <div class="sec-head">
       <h2>Tally</h2>
-      <span class="noprint"><span class="live" id="live">Loading…</span> <button class="ghost sm" id="refresh">Refresh</button> &nbsp; <select id="rsel" aria-label="Round to show"></select> <button class="ghost sm" id="reset">Start new round</button> <button class="ghost sm" id="del">Delete round</button> <button class="ghost sm danger" id="delall">Delete all records</button></span>
+      <span class="noprint"><span class="live" id="live">Loading…</span> <select id="rate" aria-label="Refresh speed"><option value="live">Live (real-time)</option><option value="30000">Every 30 s</option><option value="0">Manual</option></select> <button class="ghost sm" id="refresh">Refresh</button> &nbsp; <select id="rsel" aria-label="Round to show"></select> <button class="ghost sm" id="reset">Start new round</button> <button class="ghost sm" id="del">Delete round</button> <button class="ghost sm danger" id="delall">Delete all records</button></span>
     </div>
     <p class="sub noprint">"Start new round" restarts the tally from zero and keeps earlier rounds, which you can view from the dropdown. "Delete round" permanently removes the round currently selected in the dropdown. "Delete all records" erases everything: all visits, all registrations, and the counters.</p>
     <p class="msg" id="amsg" role="alert" style="margin:0 0 12px"></p>
@@ -247,8 +250,8 @@ textarea:focus{outline:none;border-color:var(--blue-2);box-shadow:0 0 0 3px rgba
       <div class="stat"><b id="top">-</b><span id="topl">Most visited</span></div>
       <div class="stat"><b id="low">-</b><span id="lowl">Least visited</span></div>
     </div>
-    <p class="sub noprint" style="margin:0 0 6px">Numbers refresh every 30 seconds and cost only a few cents a day. The detailed report reads every visit once to fill in the per-person numbers and charts.</p>
-    <p class="noprint" style="margin:0 0 16px"><button class="ghost sm" id="detail">Run detailed report</button></p>
+    <p class="sub noprint" id="dnote" style="margin:0 0 6px">Numbers, charts and registrants update in real time while this page is open on the current round. Use the speed menu to switch to timed refresh or manual. For past rounds, the detailed report reads every visit once to fill in the per-person numbers and charts.</p>
+    <p class="noprint" id="drow" style="margin:0 0 16px" hidden><button class="ghost sm" id="detail">Run detailed report</button></p>
     <div class="chart"><h3>Visits per station</h3><div class="box" id="abox"><canvas id="cAgency"></canvas></div></div>
     <div class="chart" id="chDist" hidden><h3>Participants by number of stations visited</h3><div class="box"><canvas id="cDist"></canvas></div></div>
     <div class="chart" id="chTime" hidden><h3 id="tt">Visits over time</h3><div class="box"><canvas id="cTime"></canvas></div></div>
@@ -477,10 +480,16 @@ function register() {
     const ag = nextUrl ? (new URL(nextUrl).searchParams.get("agency") || "").toUpperCase() : "";
     showDone(id, AGENCIES[ag] ? `Now scan the ${AGENCIES[ag]} QR code again to record your visit.` : "");
   };
-  const showDone = (id, note) => {
+  const showDone = (id, note, already) => {
     $("reg").hidden = true; $("recwrap").hidden = true;
     $("mycode").textContent = id; $("done").hidden = false;
     if (note) $("afterMsg").textContent = note;
+    if (already) {
+      // Already registered: show the code again and send them to the station QR codes. No countdown.
+      $("doneT").textContent = "You're already registered.";
+      $("afterMsg").textContent = "No need to register again. Just scan the agencies' QR codes to record your visits.";
+      return;
+    }
     $("closeRow").hidden = false;
     $("closeNow").onclick = closeNow;
     $("stay").onclick = () => { clearTimeout(timer); $("cdline").hidden = true; $("stay").hidden = true; };
@@ -494,13 +503,34 @@ function register() {
     return s;
   };
 
+  let submitting = false;
   $("reg").addEventListener("submit", async e => {
-    e.preventDefault(); $("go").disabled = true; $("msg").textContent = "";
+    e.preventDefault();
+    if (submitting) return; // ignore double taps
+    // Never create a second registration on a phone that already has one.
+    const have = localStorage.getItem("participantId:" + EVID);
+    if (have) { showDone(have, "", true); return; }
+    submitting = true; $("go").disabled = true; $("msg").textContent = "";
+    // One registration per mobile number: if this number is already registered, hand back the existing code.
+    const mf = EV.fields.find(f => f.key === "mobile") || EV.fields.find(f => f.type === "tel");
+    const digits = mf && els[mf.key].show ? String($("f_" + mf.key).value || "").replace(/\D/g, "") : "";
+    const pk = digits.length >= 10 ? digits.slice(-10) : digits; // 0917..., +63917... and 63917... all match
+    if (pk) {
+      try {
+        const ps = await getDoc(doc(db, "phones", EVID + "_" + pk));
+        const old = ps.exists() ? ps.data().pid : null;
+        if (old && (await getDoc(doc(db, "participants", old))).exists()) {
+          localStorage.setItem("participantId:" + EVID, old);
+          pid = old; showDone(old, "", true); return;
+        }
+      } catch (err) { console.error("mobile check", err); } // if the check can't run, registration still goes through
+    }
     try {
       const id = newCode();
       const data = { createdAt: serverTimestamp(), event: EVID };
       EV.fields.forEach(f => { if (els[f.key].show) data[f.key] = String($("f_" + f.key).value || "").trim(); });
       await setDoc(doc(db, "participants", id), data);
+      if (pk) { try { await setDoc(doc(db, "phones", EVID + "_" + pk), { pid: id, event: EVID }); } catch (err) { console.error("mobile index", err); } }
       try { await setDoc(doc(db, "counters", EVID), { n: increment(1) }, { merge: true }); }
       catch (e) { console.error("registered counter", e); }
       localStorage.setItem("participantId:" + EVID, id);
@@ -509,7 +539,7 @@ function register() {
     } catch (err) {
       console.error(err);
       $("msg").textContent = "Registration failed. Check your connection and try again.";
-      $("go").disabled = false;
+      $("go").disabled = false; submitting = false;
     }
   });
 
@@ -529,6 +559,21 @@ function register() {
       await finishUp(id);
     } catch (err) { console.error(err); $("rmsg").textContent = "Could not check the code. Try again."; }
   });
+
+  // Opened the registration page on a phone that is already registered: show the code, don't show the form.
+  if (pid) {
+    $("reg").hidden = true; $("recwrap").hidden = true;
+    (async () => {
+      try {
+        const s = await getDoc(doc(db, "participants", pid));
+        if (!s.exists()) { // registration was deleted: allow a fresh one
+          localStorage.removeItem("participantId:" + EVID); localStorage.removeItem("stampStore:" + EVID);
+          pid = null; $("reg").hidden = false; $("recwrap").hidden = false; return;
+        }
+      } catch (e) { console.error(e); } // offline: trust the saved code
+      showDone(pid, "", true);
+    })();
+  }
 }
 
 /* ---------- VISIT ---------- */
@@ -600,6 +645,16 @@ async function visit() {
     showStamps();
     $("tally").hidden = false;
 
+    // Live: if this person is stamped from another phone or tab, the checklist updates by itself.
+    try {
+      onSnapshot(query(collection(db, "visits"), where("pid", "==", pid), where("round", "==", round)), s => {
+        const add = s.docs.map(d => d.data().agency).filter(a => !have.includes(a));
+        if (!add.length) return;
+        add.forEach(a => have.push(a));
+        save(); showStamps();
+      }, e => console.error(e));
+    } catch (e) { console.error(e); }
+
     // Rebuild the checklist from the server (for a new phone, or after data was cleared).
     $("resync").onclick = async () => {
       $("resync").disabled = true;
@@ -621,6 +676,7 @@ async function visit() {
 function admin() {
   const BRAND = "#0B2F7A";
   Chart.defaults.font.family = "Figtree, system-ui, sans-serif"; Chart.defaults.color = "#5B6780";
+  Chart.defaults.animation = false; // charts redraw on every live update
   $("qa").textContent = TOTAL;
   const countEls = {};
 
@@ -655,7 +711,8 @@ function admin() {
   };
 
   // Numbers come from cheap count queries (about 1 read each), refreshed every 30 seconds.
-  let cur = 1, sel = "cur", counts = {}, total = 0, registered = 0, people = [], detail = null;
+  let cur = 1, sel = "cur", counts = Object.fromEntries(codes.map(c => [c, 0])), total = 0, registered = 0, people = [], detail = null;
+  let live = true, unsubs = [], unsubP = null; // live = real-time listeners; otherwise timed or manual refresh
   const roundNow = () => (sel === "cur" ? cur : sel);
   const visitsQ = (...f) => query(collection(db, "visits"), where("event", "==", EVID), ...f);
   const roundFilter = r => (r === "all" ? [] : [where("round", "==", Number(r))]);
@@ -694,15 +751,22 @@ function admin() {
     el.value = sel;
   };
 
+  const put = (id, v) => {
+    const el = $(id), t = String(v);
+    if (el.textContent === t) return;
+    el.textContent = t;
+    if (el.dataset.set) { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }
+    el.dataset.set = "1";
+  };
   const paint = () => {
     const sorted = [...codes].sort((a, b) => counts[b] - counts[a]);
     const last = sorted[sorted.length - 1];
-    $("nreg").textContent = registered;
-    $("nv").textContent = total;
-    $("avg").textContent = registered ? (total / registered).toFixed(1) : "0";
-    $("top").textContent = total ? counts[sorted[0]] : "-";
+    put("nreg", registered);
+    put("nv", total);
+    put("avg", registered ? (total / registered).toFixed(1) : "0");
+    put("top", total ? counts[sorted[0]] : "-");
     $("topl").textContent = total ? "Most visited: " + AGENCIES[sorted[0]] : "Most visited";
-    $("low").textContent = total ? counts[last] : "-";
+    put("low", total ? counts[last] : "-");
     $("lowl").textContent = total ? "Least visited: " + AGENCIES[last] : "Least visited";
     for (const c of codes) countEls[c].textContent = `${counts[c]} visit${counts[c] === 1 ? "" : "s"}`;
     $("ag").textContent = "";
@@ -719,7 +783,10 @@ function admin() {
       options: { indexAxis: "y", scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } } });
   };
 
+  let loading = false;
   async function loadStats() {
+    if (loading) return;
+    loading = true;
     $("aerr").textContent = "";
     try {
       const [rs, rg] = await Promise.all([getDoc(doc(db, "rounds", EVID)), getDoc(doc(db, "counters", EVID))]);
@@ -731,11 +798,12 @@ function admin() {
       codes.forEach((c, i) => { counts[c] = res[i].data().count; });
       total = Object.values(counts).reduce((a, b) => a + b, 0);
       paint();
-      $("live").textContent = "Updated " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      const when = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+      $("live").textContent = "Updated " + when;
     } catch (e) {
       console.error(e); $("live").textContent = "Offline";
       $("aerr").textContent = "Could not load the tally. Check the Firestore rules and your connection.";
-    }
+    } finally { loading = false; }
   }
 
   // Detailed report: reads every visit once (on demand) for the per-person numbers and charts.
@@ -743,19 +811,17 @@ function admin() {
     detail = null; $("chDist").hidden = true; $("chTime").hidden = true;
     $("np").textContent = "\u2014"; $("nall").textContent = "\u2014"; renderPeople();
   };
-  $("detail").onclick = async () => {
-    const r = roundNow();
-    if (!confirm(`This reads every visit record once (about ${total}). The free daily quota is 50,000 reads. Continue?`)) return;
-    $("detail").disabled = true; say("");
-    try {
-      const snap = await getDocs(visitsQ(...roundFilter(r)));
-      const per = {}, times = [], seen = new Set();
-      snap.forEach(d => {
-        const v = d.data(), k = `${v.pid}|${v.agency}|${v.round ?? 1}`;
-        if (seen.has(k)) return; seen.add(k);
-        per[v.pid] = (per[v.pid] || 0) + 1;
-        const t = v.ts?.toDate?.(); if (t) times.push(t);
-      });
+  const tally = snap => {
+    const per = {}, times = [], seen = new Set();
+    snap.forEach(d => {
+      const v = d.data(), k = `${v.pid}|${v.agency}|${v.round ?? 1}`;
+      if (seen.has(k)) return; seen.add(k);
+      per[v.pid] = (per[v.pid] || 0) + 1;
+      const t = v.ts?.toDate?.(); if (t) times.push(t);
+    });
+    return { per, times };
+  };
+  const renderDetail = (per, times) => {
       detail = { per, times };
       $("np").textContent = Object.keys(per).length;
       $("nall").textContent = Object.values(per).filter(n => n >= TOTAL).length;
@@ -775,6 +841,14 @@ function admin() {
         data: { labels: [...buckets.keys()], datasets: [{ data: [...buckets.values()], borderColor: BRAND, backgroundColor: "rgba(11,47,122,.12)", fill: true, tension: .25 }] },
         options: { scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
       renderPeople();
+  };
+  $("detail").onclick = async () => {
+    const r = roundNow();
+    if (!confirm(`This reads every visit record once (about ${total}). The free daily quota is 50,000 reads. Continue?`)) return;
+    $("detail").disabled = true; say("");
+    try {
+      const { per, times } = tally(await getDocs(visitsQ(...roundFilter(r))));
+      renderDetail(per, times);
     } catch (e) { console.error(e); say("Could not load the detailed report. Check your connection and try again."); }
     $("detail").disabled = false;
   };
@@ -794,20 +868,29 @@ function admin() {
       $("pbody").append(tr);
     }
   };
+  const showPeople = snap => {
+    people = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.createdAt?.seconds ?? 9e15) - (a.createdAt?.seconds ?? 9e15));
+    $("ptable").hidden = false; $("pcount").textContent = `(${people.length})`;
+    $("pretry").textContent = live ? "Reload registrants" : "Refresh registrants"; renderPeople();
+  };
+  const peopleFail = e => {
+    console.error(e); $("ptable").hidden = true; $("pcount").textContent = "";
+    $("pmsg").textContent = e.code === "permission-denied"
+      ? "Registrant details are locked. In Firebase, set settings/admin: viewParticipants = true, then press the button again."
+      : "Could not load registrants. Check your connection.";
+  };
+  // After the first press, the list stays live (new registrations appear by themselves) while Live mode is on.
   const loadPeople = async () => {
     $("pmsg").textContent = ""; $("pretry").disabled = true;
-    try {
-      const snap = await getDocs(query(collection(db, "participants"), where("event", "==", EVID)));
-      people = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => (b.createdAt?.seconds ?? 9e15) - (a.createdAt?.seconds ?? 9e15));
-      $("ptable").hidden = false; $("pcount").textContent = `(${people.length})`;
-      $("pretry").textContent = "Refresh registrants"; renderPeople();
-    } catch (e) {
-      console.error(e); $("ptable").hidden = true; $("pcount").textContent = "";
-      $("pmsg").textContent = e.code === "permission-denied"
-        ? "Registrant details are locked. In Firebase, set settings/admin: viewParticipants = true, then press the button again."
-        : "Could not load registrants. Check your connection.";
+    unsubP && unsubP(); unsubP = null;
+    const q = query(collection(db, "participants"), where("event", "==", EVID));
+    if (live) {
+      unsubP = onSnapshot(q, snap => { $("pmsg").textContent = ""; showPeople(snap); $("pretry").disabled = false; },
+        e => { peopleFail(e); $("pretry").disabled = false; });
+      return;
     }
+    try { showPeople(await getDocs(q)); } catch (e) { peopleFail(e); }
     $("pretry").disabled = false;
   };
   const csvCell = v => { let t = String(v ?? ""); if (/^[=+\-@\t\r]/.test(t)) t = "'" + t; return '"' + t.replace(/"/g, '""') + '"'; };
@@ -819,14 +902,14 @@ function admin() {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
 
-  $("rsel").onchange = e => { sel = e.target.value; resetDetail(); loadStats(); };
+  $("rsel").onchange = e => { sel = e.target.value; refresh(); };
 
   $("reset").onclick = async () => {
     if (prompt(`Start round ${cur + 1}? The tally restarts from zero.\nRound ${cur} data is kept (not deleted) and stays in the dropdown.\n\nType NEW to confirm.`) !== "NEW") { say("Cancelled: nothing changed."); return; }
     $("reset").disabled = true; say("");
     try {
       await setDoc(doc(db, "rounds", EVID), { n: cur + 1 });
-      say(`Round ${cur + 1} started.`, true); sel = "cur"; resetDetail(); await loadStats();
+      say(`Round ${cur + 1} started.`, true); sel = "cur"; refresh();
     } catch (e) { console.error(e); say("Could not start a new round. Check that the latest Firestore rules are published."); }
     $("reset").disabled = false;
   };
@@ -851,7 +934,7 @@ function admin() {
     try {
       const snap = await getDocs(visitsQ(where("round", "==", r)));
       await batchDelete(snap.docs.map(d => d.ref));
-      say(`Deleted ${snap.size} record(s) from Round ${r}.`, true); sel = "cur"; resetDetail(); await loadStats();
+      say(`Deleted ${snap.size} record(s) from Round ${r}.`, true); sel = "cur"; refresh();
     } catch (e) { console.error(e); say(lockedMsg(e)); }
     $("del").disabled = false;
   };
@@ -863,10 +946,11 @@ function admin() {
     try {
       const [vs, ps] = await Promise.all([getDocs(visitsQ()), getDocs(query(collection(db, "participants"), where("event", "==", EVID)))]);
       const refs = [...vs.docs, ...ps.docs].map(d => d.ref);
+      try { (await getDocs(query(collection(db, "phones"), where("event", "==", EVID)))).forEach(d => refs.push(d.ref)); } catch (e) { console.error(e); }
       refs.push(doc(db, "counters", EVID), doc(db, "rounds", EVID));
       await batchDelete(refs);
       people = []; $("ptable").hidden = true; $("pcount").textContent = "";
-      say(`Deleted everything: ${vs.size} visit(s) and ${ps.size} participant(s).`, true); sel = "cur"; resetDetail(); await loadStats();
+      say(`Deleted everything: ${vs.size} visit(s) and ${ps.size} participant(s).`, true); sel = "cur"; refresh();
     } catch (e) { console.error(e); say(lockedMsg(e)); }
     $("delall").disabled = false;
   };
@@ -1088,11 +1172,61 @@ function admin() {
     w.document.close();
   };
 
-  $("refresh").onclick = loadStats;
+  // ----- Live updates (Firestore real-time listeners) -----
+  // Live mode: the current round's visits, the round number and the registered counter stream in as they happen.
+  // Cost: each visit is read once when the page opens, then one read per new visit.
+  const isAuto = () => live && sel === "cur";
+  const stopLive = () => { unsubs.forEach(f => f()); unsubs = []; };
+  const startLive = () => {
+    stopLive();
+    const onErr = e => {
+      console.error(e); $("live").textContent = "Offline";
+      $("aerr").textContent = "Live updates stopped. Check the Firestore rules and your connection, then reload the page.";
+    };
+    let unsubV = null;
+    const listenVisits = () => {
+      unsubV && unsubV();
+      unsubV = onSnapshot(visitsQ(where("round", "==", cur)), snap => {
+        const c = Object.fromEntries(codes.map(x => [x, 0]));
+        snap.forEach(d => { const a = d.data().agency; if (a in c) c[a]++; });
+        counts = c; total = Object.values(c).reduce((a, b) => a + b, 0);
+        paint();
+        const { per, times } = tally(snap);
+        renderDetail(per, times);
+        $("aerr").textContent = "";
+        $("live").textContent = "\u25cf Live \u00b7 " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+      }, onErr);
+    };
+    unsubs.push(() => unsubV && unsubV());
+    unsubs.push(onSnapshot(doc(db, "rounds", EVID), s => {
+      const n = s.exists() ? s.data().n : 1, changed = n !== cur;
+      cur = n; fillSel();
+      if (changed || !unsubV) { if (changed) resetDetail(); listenVisits(); }
+    }, onErr));
+    unsubs.push(onSnapshot(doc(db, "counters", EVID), s => { registered = s.exists() ? s.data().n : 0; paint(); }, onErr));
+  };
+
+  let timer = null, pollMs = 0;
+  const refresh = () => {
+    stopLive(); clearInterval(timer); timer = null; resetDetail();
+    $("dnote").hidden = isAuto(); $("drow").hidden = isAuto();
+    if (isAuto()) { $("live").textContent = "Connecting\u2026"; startLive(); return; }
+    loadStats();
+    if (!live && pollMs) timer = setInterval(() => { if (!document.hidden) loadStats(); }, pollMs);
+  };
+  const setMode = v => {
+    live = v === "live"; pollMs = live ? 0 : Number(v);
+    localStorage.setItem("adminRate", v);
+    if (!live) { unsubP && unsubP(); unsubP = null; } // registrants list goes back to manual reload
+    refresh();
+  };
+  $("refresh").onclick = () => { if (isAuto()) $("live").textContent = "\u25cf Live \u00b7 already up to date"; else loadStats(); };
   $("psearch").oninput = renderPeople; $("pretry").onclick = loadPeople;
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) loadStats(); });
-  setInterval(() => { if (!document.hidden) loadStats(); }, 30000);
-  loadStats();
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && !isAuto()) loadStats(); });
+  const saved = localStorage.getItem("adminRate");
+  $("rate").value = ["live", "0", "30000"].includes(saved) ? saved : "live";
+  $("rate").onchange = e => setMode(e.target.value);
+  setMode($("rate").value);
 }
 </script>
 </body>
