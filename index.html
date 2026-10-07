@@ -44,7 +44,6 @@ button.ghost:hover{background:var(--blue);color:#fff}
 button.danger{color:var(--bad);border-color:var(--bad)}
 button.danger:hover{background:var(--bad);color:#fff}
 button.sm{padding:6px 12px;font-size:.9rem;border-radius:8px}
-select.f{width:100%;padding:14px;border-radius:12px;border-width:1.5px}
 button:focus-visible,a:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 button:disabled{opacity:.55;cursor:default}
 .full{width:100%;margin-top:20px}
@@ -95,10 +94,21 @@ th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
 th{color:var(--muted);font-weight:600;font-size:.88rem}
 select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;background:#fff}
 .live{color:var(--ok);font-weight:700}
+textarea{width:100%;padding:14px;font:inherit;border:1.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);resize:vertical}
+textarea:focus{outline:none;border-color:var(--blue-2);box-shadow:0 0 0 3px rgba(20,64,154,.2)}
+#fields select,.card select.fld{width:100%;padding:14px;font:inherit;border:1.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink)}
+.hint{color:var(--muted);font-size:.88rem;margin:6px 0 0}
+.frow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0;padding:10px;border:1px solid var(--line);border-radius:10px;background:#F7F9FD}
+.frow input[type=text]{width:auto;flex:2 1 170px;padding:10px 12px}
+.frow input.opts{flex:1 1 100%}
+.frow select{flex:1 1 120px;padding:10px}
+.frow .chk{display:flex;align-items:center;gap:6px;margin:0;font-weight:600}
+.frow input[type=checkbox]{width:auto}
+.mkout{display:flex;justify-content:center;margin:18px 0 4px;min-height:60px}
 .people-tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:8px 0 10px}
 .people-tools input{flex:1;min-width:200px;width:auto;padding:10px 12px}
 .tablewrap{overflow-x:auto}
-#ptable{min-width:1000px}
+#ptable{min-width:680px}
 .topbar{position:sticky;top:0;z-index:50;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 16px;background:#071C4D;color:#fff;border-bottom:1px solid rgba(255,255,255,.14)}
 .topbar b{font:800 1.1rem var(--display)}
 .menuwrap{position:relative}
@@ -122,32 +132,11 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
 <div id="v-register" hidden>
 <header class="hero"><div class="in">
   <h1>Register</h1>
-  <p class="sub">Register once, then scan each agency's QR code to collect a stamp for your visit.</p>
+  <p class="sub" id="rsub">Register once, then scan each station's QR code to collect a stamp for your visit.</p>
 </div></header>
 <main class="pull">
   <form id="reg" class="card">
-    <label for="name">Full name</label>
-    <input id="name" required autocomplete="name">
-    <label for="mobile">Mobile number</label>
-    <input id="mobile" type="tel" required inputmode="tel" autocomplete="tel">
-    <label for="address">Address</label>
-    <input id="address" required autocomplete="street-address" placeholder="Barangay, Municipality, Province">
-    <label for="utype">Are you an OFW or a beneficiary?</label>
-    <select id="utype" class="f" required>
-      <option value="">Select one</option>
-      <option value="OFW">OFW</option>
-      <option value="Beneficiary">Beneficiary</option>
-    </select>
-    <label for="sector">Land-based or sea-based?</label>
-    <select id="sector" class="f" required>
-      <option value="">Select one</option>
-      <option value="Land-based">Land-based (LB)</option>
-      <option value="Sea-based">Sea-based (SB)</option>
-    </select>
-    <div id="ofwWrap" hidden>
-      <label for="ofwName">Name of the OFW</label>
-      <input id="ofwName" autocomplete="off" placeholder="Full name of your OFW family member">
-    </div>
+    <div id="fields"></div>
     <button class="full" id="go">Register</button>
     <div class="msg" id="msg" role="alert"></div>
   </form>
@@ -164,7 +153,7 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
     <p class="ok"><strong>You're registered.</strong></p>
     <p>Your participant code (save or screenshot it):</p>
     <div class="code" id="mycode"></div>
-    <p id="afterMsg">Now scan an agency's QR code to record your visit.</p>
+    <p id="afterMsg">Now scan a station's QR code to record your visit.</p>
     <div id="closeRow" hidden>
       <p id="cdline">This site is closing in <strong id="cd">10</strong> seconds.</p>
       <button class="full" id="closeNow">Close page now</button>
@@ -196,7 +185,7 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
 <!-- ADMIN -->
 <div id="v-admin" hidden>
 <div class="topbar noprint">
-  <b>Admin</b>
+  <b id="evTitle">Admin</b>
 <div class="menuwrap">
   <button class="burger" id="menuBtn" aria-expanded="false" aria-controls="menu" aria-haspopup="true">
     <span class="bars" aria-hidden="true"></span><span id="menuLbl">Menu</span>
@@ -204,8 +193,10 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
   <ul class="menu" id="menu" hidden>
     <li><button data-view="all">All sections</button></li>
     <li><button data-view="reg">Registration QR</button></li>
-    <li><button data-view="agency">Agency QR codes</button></li>
+    <li><button data-view="agency">Station QR codes</button></li>
     <li><button data-view="tally">Tally</button></li>
+    <li><button data-view="setup">Event setup</button></li>
+    <li><button data-view="maker">QR maker</button></li>
   </ul>
 </div>
 </div>
@@ -226,10 +217,10 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
 
   <section id="s-agency">
     <div class="sec-head">
-      <h2>Agency QR codes</h2>
+      <h2>Station QR codes</h2>
       <button class="ghost noprint" onclick="window.print()">Print all</button>
     </div>
-    <p class="sub"><strong id="qa"></strong> agency QR codes, one per booth. The number under each is its recorded visits.</p>
+    <p class="sub"><strong id="qa"></strong> station QR codes, one per booth. The number under each is its recorded visits.</p>
     <div class="qrs" id="qrs"></div>
   </section>
   <section class="noprint" id="s-tally">
@@ -243,34 +234,68 @@ select{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radiu
       <div class="stat"><b id="nreg">0</b><span>Registered</span></div>
       <div class="stat"><b id="nv">0</b><span>Total visits</span></div>
       <div class="stat"><b id="np">&mdash;</b><span>Participants with a visit</span></div>
-      <div class="stat"><b id="nall">&mdash;</b><span>Visited every agency</span></div>
-      <div class="stat"><b id="avg">0</b><span>Average agencies per registered person</span></div>
+      <div class="stat"><b id="nall">&mdash;</b><span>Visited every station</span></div>
+      <div class="stat"><b id="avg">0</b><span>Average stations per registered person</span></div>
       <div class="stat"><b id="top">-</b><span id="topl">Most visited</span></div>
       <div class="stat"><b id="low">-</b><span id="lowl">Least visited</span></div>
     </div>
     <p class="sub noprint" style="margin:0 0 6px">Numbers refresh every 30 seconds and cost only a few cents a day. The detailed report reads every visit once to fill in the per-person numbers and charts.</p>
     <p class="noprint" style="margin:0 0 16px"><button class="ghost sm" id="detail">Run detailed report</button></p>
-    <div class="chart"><h3>Visits per agency</h3><div class="box" id="abox"><canvas id="cAgency"></canvas></div></div>
-    <div class="chart" id="chDist" hidden><h3>Participants by number of agencies visited</h3><div class="box"><canvas id="cDist"></canvas></div></div>
+    <div class="chart"><h3>Visits per station</h3><div class="box" id="abox"><canvas id="cAgency"></canvas></div></div>
+    <div class="chart" id="chDist" hidden><h3>Participants by number of stations visited</h3><div class="box"><canvas id="cDist"></canvas></div></div>
     <div class="chart" id="chTime" hidden><h3 id="tt">Visits over time</h3><div class="box"><canvas id="cTime"></canvas></div></div>
     <table>
-      <thead><tr><th>Agency</th><th>Visits</th><th>% of registered</th></tr></thead>
+      <thead><tr><th>Station</th><th>Visits</th><th>% of registered</th></tr></thead>
       <tbody id="ag"></tbody>
     </table>
     <h2>Who registered <span id="pcount" style="color:var(--muted);font-weight:600"></span></h2>
     <div class="people-tools">
-      <input id="psearch" type="search" placeholder="Search name, mobile, address, OFW name or code" aria-label="Search registrants">
+      <input id="psearch" type="search" placeholder="Search name, mobile, organization or code" aria-label="Search registrants">
       <button class="ghost sm" id="pcsv">Download CSV</button>
     </div>
     <div class="msg" id="pmsg" role="alert" style="margin:0 0 10px"></div>
     <button class="ghost sm" id="pretry" style="margin-bottom:12px">Load registrants</button>
     <div class="tablewrap">
       <table id="ptable" hidden>
-        <thead><tr><th>Code</th><th>Name</th><th>Mobile</th><th>Address</th><th>OFW / Beneficiary</th><th>LB / SB</th><th>Name of OFW</th><th>Registered</th><th>Stamps</th></tr></thead>
+        <thead><tr id="phead"></tr></thead>
         <tbody id="pbody"></tbody>
       </table>
     </div>
     <div class="msg" id="aerr" role="alert"></div>
+  </section>
+
+  <section class="noprint" id="s-setup">
+    <div class="sec-head"><h2>Event setup</h2></div>
+    <p class="sub">Set the event name, the stations people visit, and the questions they answer when registering. Change these to reuse the system for any event.</p>
+    <div class="card">
+      <label for="evName">Event name</label>
+      <input id="evName" maxlength="80">
+      <label for="evStations">Stations (one per line, written as CODE | Name)</label>
+      <textarea id="evStations" rows="9"></textarea>
+      <p class="hint">A new line can be just a name and a code is made for you. Never change a code after its QR code is printed.</p>
+      <label>Registration questions</label>
+      <div id="evFields"></div>
+      <button class="ghost sm" id="addField" type="button">+ Add a question</button>
+      <button class="full" id="saveSetup">Save event setup</button>
+      <div class="msg" id="smsg" role="alert"></div>
+    </div>
+  </section>
+
+  <section class="noprint" id="s-maker">
+    <div class="sec-head"><h2>QR maker</h2></div>
+    <p class="sub">Make a QR code for any link or text, such as a Google Form, a Facebook page, or one of your station links.</p>
+    <div class="card">
+      <label for="mkPick">Quick fill</label>
+      <select id="mkPick" class="fld"></select>
+      <label for="mkLabel">Title above the QR code (optional)</label>
+      <input id="mkLabel" maxlength="60">
+      <label for="mkText">Link or text</label>
+      <input id="mkText" placeholder="https://...">
+      <div class="mkout"><div id="mkQR"></div></div>
+      <button class="full" id="mkDl">Download PNG</button>
+      <button class="full ghost" id="mkPrint">Print</button>
+      <div class="msg" id="mkmsg" role="alert"></div>
+    </div>
   </section>
 </main>
 </div>
@@ -291,7 +316,7 @@ const db = getFirestore(initializeApp({
 }));
 
 // CODE: "Display name" (up to 25). The code goes in the agency QR. Don't rename after printing.
-const AGENCIES = {
+const DEFAULT_AGENCIES = {
   PAO: "PUBLIC ATTORNEY'S OFFICE (PAO)",
   PRC: "PHILIPPINE RED CROSS (PRC)",
   LBP: "LANDBANK OF THE PHILIPPINES (LBP)",
@@ -315,24 +340,80 @@ const AGENCIES = {
   DA: "DEPARTMENT OF AGRICULTURE (DA)",
   DCC: "DATA CENTER COLLEGE OF THE PHILS. OF BANGUED, ABRA, INC.",
   TESDA: "TECHNICAL EDUCATION AND SKILLS DEVELOPMENT AUTHORITY (TESDA)",
-  OWWA: "OVERSEAS WORKERS WELFARE ADMINISTRATION (OWWA)",
 };
 /* ===== end config ===== */
 
 const $ = id => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
 const BASE = location.href.split(/[?#]/)[0];
-const codes = Object.keys(AGENCIES), TOTAL = codes.length;
+const DEFAULT_FIELDS = [
+  { key: "name", label: "Full name", type: "text", required: true },
+  { key: "mobile", label: "Mobile number", type: "tel", required: true },
+  { key: "org", label: "Barangay or organization", type: "text", required: false },
+];
+const EV_DEFAULT = {
+  name: "Serbisyo Caravan",
+  stations: Object.entries(DEFAULT_AGENCIES).map(([code, name]) => ({ code, name })),
+  fields: DEFAULT_FIELDS,
+};
+// Event name, stations and registration questions come from Firestore (set in Admin > Event setup).
+// Phones cache them for 10 minutes so this costs about one read per phone per 10 minutes.
+async function loadEvent(fresh) {
+  const cached = () => { try { return JSON.parse(localStorage.getItem("eventCfg") || "null"); } catch { return null; } };
+  try {
+    const c = cached();
+    if (!fresh && c && Date.now() - c.t < 600000) return c.v;
+    const snap = await getDoc(doc(db, "config", "event"));
+    const d = snap.exists() ? snap.data() : {};
+    const v = {
+      name: d.name || EV_DEFAULT.name,
+      stations: Array.isArray(d.stations) && d.stations.length ? d.stations : EV_DEFAULT.stations,
+      fields: Array.isArray(d.fields) && d.fields.length ? d.fields : EV_DEFAULT.fields,
+    };
+    localStorage.setItem("eventCfg", JSON.stringify({ t: Date.now(), v }));
+    return v;
+  } catch (e) {
+    console.error(e);
+    return cached()?.v || EV_DEFAULT;
+  }
+}
+let EV, AGENCIES, codes, TOTAL;
 const REG_URL = BASE + "?page=register";
 const pid = localStorage.getItem("participantId");
 
-const page = Q.get("page");
-if (page === "admin") { $("v-admin").hidden = false; admin(); }
-else if (Q.get("agency") && page !== "register") { $("v-visit").hidden = false; visit(); }
-else { $("v-register").hidden = false; register(); }
+(async () => {
+  const page = Q.get("page");
+  EV = await loadEvent(page === "admin");
+  AGENCIES = Object.fromEntries(EV.stations.map(s => [s.code, s.name]));
+  codes = Object.keys(AGENCIES); TOTAL = codes.length;
+  document.title = EV.name;
+  if (page === "admin") { $("v-admin").hidden = false; admin(); }
+  else if (Q.get("agency") && page !== "register") { $("v-visit").hidden = false; visit(); }
+  else { $("v-register").hidden = false; register(); }
+})();
 
 /* ---------- REGISTER ---------- */
 function register() {
+  $("rsub").textContent = `${EV.name}: register once, then scan each station's QR code to collect a stamp for your visit.`;
+  EV.fields.forEach(f => {
+    const wrap = document.createElement("div");
+    const lab = document.createElement("label"); lab.htmlFor = "f_" + f.key; lab.textContent = f.label;
+    if (!f.required) { const o = document.createElement("span"); o.style.fontWeight = "400"; o.textContent = " (optional)"; lab.append(o); }
+    let inp;
+    if (f.type === "choice") {
+      inp = document.createElement("select"); inp.className = "fld";
+      inp.add(new Option("Select\u2026", ""));
+      (f.options || []).forEach(o => inp.add(new Option(o, o)));
+    } else {
+      inp = document.createElement("input");
+      inp.type = f.type === "number" ? "number" : f.type === "tel" ? "tel" : "text";
+      if (f.type === "tel") inp.inputMode = "tel";
+      if (f.key === "name") inp.autocomplete = "name";
+      if (f.key === "mobile") inp.autocomplete = "tel";
+    }
+    inp.id = "f_" + f.key; inp.required = !!f.required;
+    wrap.append(lab, inp); $("fields").append(wrap);
+  });
   const next = Q.get("next");
   let nextUrl = null;
   try { const u = new URL(next, location.href); if (u.origin === location.origin) nextUrl = u.href; } catch {}
@@ -367,22 +448,13 @@ function register() {
     return s;
   };
 
-  $("utype").onchange = () => {
-    const b = $("utype").value === "Beneficiary";
-    $("ofwWrap").hidden = !b; $("ofwName").required = b;
-    if (!b) $("ofwName").value = "";
-  };
-
   $("reg").addEventListener("submit", async e => {
     e.preventDefault(); $("go").disabled = true; $("msg").textContent = "";
     try {
       const id = newCode();
-      await setDoc(doc(db, "participants", id), {
-        name: $("name").value.trim(), mobile: $("mobile").value.trim(),
-        address: $("address").value.trim(), type: $("utype").value, sector: $("sector").value,
-        ofwName: $("utype").value === "Beneficiary" ? $("ofwName").value.trim() : "",
-        createdAt: serverTimestamp(),
-      });
+      const data = { createdAt: serverTimestamp() };
+      EV.fields.forEach(f => { data[f.key] = String($("f_" + f.key).value || "").trim(); });
+      await setDoc(doc(db, "participants", id), data);
       try { await setDoc(doc(db, "config", "registered"), { n: increment(1) }, { merge: true }); }
       catch (e) { console.error("registered counter", e); }
       localStorage.setItem("participantId", id);
@@ -420,7 +492,7 @@ async function visit() {
 
   if (!AGENCIES[agency]) {
     $("vtitle").textContent = "Unknown QR code";
-    $("verr").textContent = "This QR code isn't linked to a listed agency. Ask the staff at the booth.";
+    $("verr").textContent = "This QR code isn't linked to a listed station. Ask the staff at the booth.";
     return;
   }
   if (!pid) return toRegister();
@@ -432,17 +504,18 @@ async function visit() {
   const save = () => localStorage.setItem("stampStore", JSON.stringify(st));
 
   try {
-    // Check on every scan that this registration still exists. If the admin used "Delete all records",
-    // this phone's saved code and stamps are wiped and the person must register again from scratch.
-    if (!(await getDoc(doc(db, "participants", pid))).exists()) {
-      localStorage.removeItem("participantId"); localStorage.removeItem("stampStore");
-      return toRegister();
+    // Re-check the registration about every 10 minutes (catches cleared data).
+    if (!st.vt || Date.now() - st.vt > 600000) {
+      if (!(await getDoc(doc(db, "participants", pid))).exists()) {
+        localStorage.removeItem("participantId"); localStorage.removeItem("stampStore");
+        return toRegister();
+      }
+      st.vt = Date.now();
     }
-    st.vt = Date.now();
-    const rs = await getDoc(doc(db, "config", "round"));
-    const rn = rs.exists() ? rs.data().n : 1;
-    if (st.round && st.round.n !== rn) st.stamps = {};
-    st.round = { n: rn, t: Date.now() };
+    if (!st.round || Date.now() - st.round.t > 600000) {
+      const rs = await getDoc(doc(db, "config", "round"));
+      st.round = { n: rs.exists() ? rs.data().n : 1, t: Date.now() };
+    }
     const round = st.round.n;
     st.stamps = st.stamps || {};
     const have = st.stamps[round] = st.stamps[round] || [];
@@ -541,17 +614,20 @@ function admin() {
   const visitsQ = (...f) => query(collection(db, "visits"), ...f);
   const roundFilter = r => (r === "all" ? [] : [where("round", "==", Number(r))]);
 
-  const VIEWS = { all: ["s-reg", "s-agency", "s-tally"], reg: ["s-reg"], agency: ["s-agency"], tally: ["s-tally"] };
-  const NAMES = { all: "Menu", reg: "Registration QR", agency: "Agency QR codes", tally: "Tally" };
-  const TITLES = { all: "QR codes and tally", reg: "Registration QR", agency: "Agency QR codes", tally: "Tally" };
+  const ALL_IDS = ["s-reg", "s-agency", "s-tally", "s-setup", "s-maker"];
+  const VIEWS = { all: ["s-reg", "s-agency", "s-tally"], reg: ["s-reg"], agency: ["s-agency"], tally: ["s-tally"], setup: ["s-setup"], maker: ["s-maker"] };
+  const NAMES = { all: "Menu", reg: "Registration QR", agency: "Station QR codes", tally: "Tally", setup: "Event setup", maker: "QR maker" };
+  const TITLES = { all: "QR codes and tally", reg: "Registration QR", agency: "Station QR codes", tally: "Tally", setup: "Event setup", maker: "QR maker" };
   const SUBS = { all: "Print the QR codes and watch the tally update as people scan.",
     reg: "Post this where people first arrive. Everyone scans it once to register.",
     agency: "One QR code for each booth. Download or print them.",
-    tally: "Live numbers that update as people scan." };
+    tally: "Live numbers that update as people scan.",
+    setup: "Name your event, set its stations, and choose the registration questions.",
+    maker: "Make a QR code for any link or text and download it." };
   const menu = $("menu"), btn = $("menuBtn");
   const closeMenu = () => { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); };
   const showView = v => {
-    VIEWS.all.forEach(id => { $(id).hidden = !VIEWS[v].includes(id); });
+    ALL_IDS.forEach(id => { $(id).hidden = !VIEWS[v].includes(id); });
     $("menuLbl").textContent = NAMES[v]; $("vh").textContent = TITLES[v]; $("vsb").textContent = SUBS[v];
     menu.querySelectorAll("button").forEach(b => b.setAttribute("aria-current", String(b.dataset.view === v)));
     closeMenu(); window.scrollTo(0, 0);
@@ -641,7 +717,7 @@ function admin() {
       Object.values(per).forEach(n => dist[Math.min(n, TOTAL) - 1]++);
       draw("cDist", { type: "bar",
         data: { labels: dist.map((_, i) => String(i + 1)), datasets: [{ data: dist, backgroundColor: "#F2B705" }] },
-        options: { scales: { x: { title: { display: true, text: "Agencies visited" } }, y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: "Participants" } } } } });
+        options: { scales: { x: { title: { display: true, text: "Stations visited" } }, y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: "Participants" } } } } });
       times.sort((a, b) => a - b);
       const byDay = times.length && times[times.length - 1] - times[0] > 48 * 3600e3;
       $("tt").textContent = byDay ? "Visits per day" : "Visits per hour";
@@ -660,12 +736,12 @@ function admin() {
   const stampText = p => (detail ? `${detail.per[p.id] || 0} / ${TOTAL}` : "\u2014");
   const renderPeople = () => {
     const q = $("psearch").value.trim().toLowerCase();
-    const list = people.filter(p => !q || [p.id, p.name, p.mobile, p.address, p.org, p.type, p.sector, p.ofwName].some(x => String(x || "").toLowerCase().includes(q)));
+    const list = people.filter(p => !q || [p.id, ...EV.fields.map(f => p[f.key])].some(x => String(x || "").toLowerCase().includes(q)));
     $("pbody").textContent = "";
     for (const p of list) {
       const tr = document.createElement("tr");
       const when = p.createdAt?.toDate?.();
-      const cells = [p.id, p.name, p.mobile, p.address || p.org || "", p.type || "", p.sector || "", p.ofwName || "",
+      const cells = [p.id, ...EV.fields.map(f => p[f.key] ?? ""),
         when ? when.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "", stampText(p)];
       for (const t of cells) { const td = document.createElement("td"); td.textContent = t; tr.append(td); }
       $("pbody").append(tr);
@@ -689,8 +765,8 @@ function admin() {
   };
   const csvCell = v => { let t = String(v ?? ""); if (/^[=+\-@\t\r]/.test(t)) t = "'" + t; return '"' + t.replace(/"/g, '""') + '"'; };
   $("pcsv").onclick = () => {
-    const rows = [["Code", "Name", "Mobile", "Address", "OFW/Beneficiary", "LB/SB", "Name of OFW", "Registered at", "Stamps (selected round)"],
-      ...people.map(p => [p.id, p.name, p.mobile, p.address || p.org || "", p.type || "", p.sector || "", p.ofwName || "", p.createdAt?.toDate?.().toLocaleString() || "", detail ? detail.per[p.id] || 0 : ""])];
+    const rows = [["Code", ...EV.fields.map(f => f.label), "Registered at", "Stamps (selected round)"],
+      ...people.map(p => [p.id, ...EV.fields.map(f => p[f.key] ?? ""), p.createdAt?.toDate?.().toLocaleString() || "", detail ? detail.per[p.id] || 0 : ""])];
     const blob = new Blob(["\ufeff" + rows.map(r => r.map(csvCell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "registered-participants.csv"; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
@@ -742,12 +818,134 @@ function admin() {
       const refs = [...vs.docs, ...ps.docs].map(d => d.ref);
       refs.push(doc(db, "config", "registered"), doc(db, "config", "round"));
       await batchDelete(refs);
-      // Also wipe this device's saved registration so it starts fresh too.
-      localStorage.removeItem("participantId"); localStorage.removeItem("stampStore");
       people = []; $("ptable").hidden = true; $("pcount").textContent = "";
       say(`Deleted everything: ${vs.size} visit(s) and ${ps.size} participant(s).`, true); sel = "cur"; resetDetail(); await loadStats();
     } catch (e) { console.error(e); say(lockedMsg(e)); }
     $("delall").disabled = false;
+  };
+
+  // ----- Registrants table header follows the registration questions -----
+  $("evTitle").textContent = `${EV.name} \u00b7 Admin`;
+  ["Code", ...EV.fields.map(f => f.label), "Registered", "Stamps"].forEach(t => {
+    const th = document.createElement("th"); th.textContent = t; $("phead").append(th);
+  });
+
+  // ----- Event setup -----
+  let draft = EV.fields.map(f => ({ ...f, options: f.options || [] }));
+  $("evName").value = EV.name;
+  $("evStations").value = EV.stations.map(s => `${s.code} | ${s.name}`).join("\n");
+  const renderRows = () => {
+    const box = $("evFields"); box.textContent = "";
+    draft.forEach((f, i) => {
+      const row = document.createElement("div"); row.className = "frow";
+      const lab = document.createElement("input"); lab.type = "text"; lab.value = f.label; lab.placeholder = "Question, e.g. Age"; lab.setAttribute("aria-label", "Question");
+      lab.oninput = () => { f.label = lab.value; };
+      const typ = document.createElement("select"); typ.setAttribute("aria-label", "Answer type");
+      [["text", "Short text"], ["number", "Number"], ["tel", "Phone number"], ["choice", "Pick from a list"]].forEach(([v, t]) => typ.add(new Option(t, v)));
+      typ.value = f.type;
+      const opts = document.createElement("input"); opts.type = "text"; opts.className = "opts"; opts.placeholder = "Choices, separated by commas";
+      opts.value = (f.options || []).join(", "); opts.hidden = f.type !== "choice"; opts.setAttribute("aria-label", "Choices");
+      opts.oninput = () => { f.options = opts.value.split(",").map(x => x.trim()).filter(Boolean); };
+      typ.onchange = () => { f.type = typ.value; opts.hidden = f.type !== "choice"; };
+      const req = document.createElement("label"); req.className = "chk";
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!f.required; cb.onchange = () => { f.required = cb.checked; };
+      req.append(cb, " Required");
+      const del = document.createElement("button"); del.type = "button"; del.className = "ghost sm danger"; del.textContent = "Remove";
+      del.onclick = () => { draft.splice(i, 1); renderRows(); };
+      row.append(lab, typ, req, del, opts); box.append(row);
+    });
+  };
+  renderRows();
+  $("addField").onclick = () => { draft.push({ key: "q" + Date.now().toString(36), label: "", type: "text", required: false, options: [] }); renderRows(); };
+  const autoCode = nm => {
+    const m = /\(([^)]{2,14})\)\s*$/.exec(nm);
+    return (m ? m[1] : nm).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) || "ST";
+  };
+  const smsg = (t, good) => { $("smsg").textContent = t; $("smsg").className = "msg" + (good ? " ok" : ""); };
+  $("saveSetup").onclick = async () => {
+    smsg("");
+    const name = $("evName").value.trim();
+    if (!name) { smsg("Enter an event name."); return; }
+    const used = new Set(), stations = [];
+    for (const l of $("evStations").value.split(/\r?\n/).map(x => x.trim()).filter(Boolean)) {
+      const i = l.indexOf("|");
+      const nm = (i >= 0 ? l.slice(i + 1) : l).trim();
+      let code = i >= 0 ? l.slice(0, i).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 14) : "";
+      if (!nm) continue;
+      if (!code) { const base = autoCode(nm); code = base; let k = 2; while (used.has(code)) code = base + k++; }
+      if (used.has(code)) { smsg(`The code ${code} is used twice. Each station needs its own code.`); return; }
+      used.add(code); stations.push({ code, name: nm });
+    }
+    if (!stations.length) { smsg("Add at least one station."); return; }
+    const fields = draft.filter(f => f.label.trim()).map(f => ({
+      key: f.key, label: f.label.trim(), type: f.type, required: !!f.required,
+      ...(f.type === "choice" ? { options: f.options || [] } : {}),
+    }));
+    if (!fields.length) { smsg("Add at least one registration question."); return; }
+    const bad = fields.find(f => f.type === "choice" && f.options.length < 2);
+    if (bad) { smsg(`Give "${bad.label}" at least two choices.`); return; }
+    $("saveSetup").disabled = true;
+    try {
+      await setDoc(doc(db, "config", "event"), { name, stations, fields });
+      localStorage.removeItem("eventCfg");
+      smsg("Saved. Reloading\u2026", true); setTimeout(() => location.reload(), 700);
+    } catch (e) {
+      console.error(e);
+      smsg(e.code === "permission-denied"
+        ? "Setup is locked. In Firebase, set settings/admin: setupEnabled = true (and publish the latest rules), then press Save again."
+        : "Could not save. Check your connection and try again.");
+      $("saveSetup").disabled = false;
+    }
+  };
+
+  // ----- QR maker -----
+  const mkmsg = t => { $("mkmsg").textContent = t; };
+  const pick = $("mkPick");
+  pick.add(new Option("Custom (type below)", ""));
+  pick.add(new Option("Registration link", REG_URL));
+  EV.stations.forEach(s => pick.add(new Option(`Station: ${s.name}`, `${BASE}?agency=${s.code}`)));
+  const mkRender = () => {
+    mkmsg(""); $("mkQR").textContent = "";
+    const t = $("mkText").value.trim();
+    if (!t) return;
+    try { new QRCode($("mkQR"), { text: t, width: 240, height: 240, correctLevel: QRCode.CorrectLevel.M }); }
+    catch (e) { console.error(e); mkmsg("That is too long for one QR code. Use a shorter link or text."); }
+  };
+  pick.onchange = () => {
+    $("mkText").value = pick.value;
+    $("mkLabel").value = pick.value ? pick.selectedOptions[0].text.replace(/^Station: /, "") : "";
+    mkRender();
+  };
+  $("mkText").oninput = mkRender;
+  const mkCanvas = async () => {
+    const t = $("mkText").value.trim(), label = $("mkLabel").value.trim();
+    if (!t) { mkmsg("Type a link or text first."); return null; }
+    const tmp = document.createElement("div");
+    try { new QRCode(tmp, { text: t, width: 720, height: 720, correctLevel: QRCode.CorrectLevel.M }); }
+    catch (e) { mkmsg("That is too long for one QR code. Use a shorter link or text."); return null; }
+    await new Promise(r => setTimeout(r, 60));
+    const src = tmp.querySelector("canvas"), m = 70, head = label ? 130 : 0;
+    const c = document.createElement("canvas"); c.width = src.width + m * 2; c.height = src.height + m * 2 + head;
+    const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
+    if (label) {
+      let size = 56; x.fillStyle = "#0E1A33"; x.textAlign = "center"; x.textBaseline = "middle";
+      do { x.font = `800 ${size}px "Bricolage Grotesque", Arial, sans-serif`; size -= 2; } while (x.measureText(label).width > c.width - 100 && size > 20);
+      x.fillText(label, c.width / 2, 78);
+    }
+    x.drawImage(src, m, m + head);
+    return c;
+  };
+  $("mkDl").onclick = async () => {
+    const c = await mkCanvas(); if (!c) return;
+    const a = document.createElement("a"); a.href = c.toDataURL("image/png");
+    a.download = ($("mkLabel").value.trim() || "qr-code").toLowerCase().replace(/[^a-z0-9]+/g, "-") + ".png"; a.click();
+  };
+  $("mkPrint").onclick = async () => {
+    const c = await mkCanvas(); if (!c) return;
+    const w = window.open("", "_blank");
+    if (!w) { mkmsg("Allow pop-ups to print, or use Download PNG."); return; }
+    w.document.write(`<title>QR code</title><body style="margin:0;display:grid;place-items:center;min-height:100vh"><img src="${c.toDataURL("image/png")}" style="max-width:90vw;max-height:90vh"><script>onload=()=>print()<\/script>`);
+    w.document.close();
   };
 
   $("refresh").onclick = loadStats;
