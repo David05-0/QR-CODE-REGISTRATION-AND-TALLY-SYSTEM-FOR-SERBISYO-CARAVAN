@@ -102,6 +102,8 @@ textarea:focus{outline:none;border-color:var(--blue-2);box-shadow:0 0 0 3px rgba
 .frow input[type=text]{width:auto;flex:2 1 170px;padding:10px 12px}
 .frow input.opts{flex:1 1 100%}
 .frow select{flex:1 1 120px;padding:10px}
+.frow .cond{flex:1 1 100%;display:flex;gap:8px;flex-wrap:wrap}
+.frow .cond select{flex:1 1 200px}
 .frow .chk{display:flex;align-items:center;gap:6px;margin:0;font-weight:600}
 .frow input[type=checkbox]{width:auto}
 .mkout{display:flex;justify-content:center;margin:18px 0 4px;min-height:60px}
@@ -274,6 +276,7 @@ textarea:focus{outline:none;border-color:var(--blue-2);box-shadow:0 0 0 3px rgba
       <textarea id="evStations" rows="9"></textarea>
       <p class="hint">A new line can be just a name and a code is made for you. Never change a code after its QR code is printed.</p>
       <label>Registration questions</label>
+      <p class="hint" style="margin:0 0 6px">Tip: to ask a follow-up only for certain answers, put a "pick from a list" question above it, then set the follow-up to "Show only if…".</p>
       <div id="evFields"></div>
       <button class="ghost sm" id="addField" type="button">+ Add a question</button>
       <button class="full" id="saveSetup">Save event setup</button>
@@ -395,6 +398,7 @@ const pid = localStorage.getItem("participantId");
 /* ---------- REGISTER ---------- */
 function register() {
   $("rsub").textContent = `${EV.name}: register once, then scan each station's QR code to collect a stamp for your visit.`;
+  const els = {};
   EV.fields.forEach(f => {
     const wrap = document.createElement("div");
     const lab = document.createElement("label"); lab.htmlFor = "f_" + f.key; lab.textContent = f.label;
@@ -412,8 +416,21 @@ function register() {
       if (f.key === "mobile") inp.autocomplete = "tel";
     }
     inp.id = "f_" + f.key; inp.required = !!f.required;
+    inp.addEventListener("input", () => update()); inp.addEventListener("change", () => update());
+    els[f.key] = { wrap, inp, show: true };
     wrap.append(lab, inp); $("fields").append(wrap);
   });
+  // A question tied to an earlier one only shows (and only counts) when that answer is picked.
+  const update = () => {
+    EV.fields.forEach(f => {
+      const e = els[f.key], src = f.showIf && els[f.showIf.key];
+      e.show = !src || (src.show && src.inp.value === f.showIf.value);
+      e.wrap.hidden = !e.show;
+      e.inp.disabled = !e.show;
+      e.inp.required = e.show && !!f.required;
+    });
+  };
+  update();
   const next = Q.get("next");
   let nextUrl = null;
   try { const u = new URL(next, location.href); if (u.origin === location.origin) nextUrl = u.href; } catch {}
@@ -453,7 +470,7 @@ function register() {
     try {
       const id = newCode();
       const data = { createdAt: serverTimestamp() };
-      EV.fields.forEach(f => { data[f.key] = String($("f_" + f.key).value || "").trim(); });
+      EV.fields.forEach(f => { if (els[f.key].show) data[f.key] = String($("f_" + f.key).value || "").trim(); });
       await setDoc(doc(db, "participants", id), data);
       try { await setDoc(doc(db, "config", "registered"), { n: increment(1) }, { merge: true }); }
       catch (e) { console.error("registered counter", e); }
@@ -836,23 +853,48 @@ function admin() {
   $("evStations").value = EV.stations.map(s => `${s.code} | ${s.name}`).join("\n");
   const renderRows = () => {
     const box = $("evFields"); box.textContent = "";
+    const mk = (t, fn, cls) => { const b = document.createElement("button"); b.type = "button"; b.className = cls || "ghost sm"; b.textContent = t; b.onclick = fn; return b; };
     draft.forEach((f, i) => {
       const row = document.createElement("div"); row.className = "frow";
       const lab = document.createElement("input"); lab.type = "text"; lab.value = f.label; lab.placeholder = "Question, e.g. Age"; lab.setAttribute("aria-label", "Question");
-      lab.oninput = () => { f.label = lab.value; };
+      lab.oninput = () => { f.label = lab.value; }; lab.onchange = renderRows;
       const typ = document.createElement("select"); typ.setAttribute("aria-label", "Answer type");
       [["text", "Short text"], ["number", "Number"], ["tel", "Phone number"], ["choice", "Pick from a list"]].forEach(([v, t]) => typ.add(new Option(t, v)));
       typ.value = f.type;
+      typ.onchange = () => { f.type = typ.value; renderRows(); };
       const opts = document.createElement("input"); opts.type = "text"; opts.className = "opts"; opts.placeholder = "Choices, separated by commas";
       opts.value = (f.options || []).join(", "); opts.hidden = f.type !== "choice"; opts.setAttribute("aria-label", "Choices");
-      opts.oninput = () => { f.options = opts.value.split(",").map(x => x.trim()).filter(Boolean); };
-      typ.onchange = () => { f.type = typ.value; opts.hidden = f.type !== "choice"; };
+      opts.oninput = () => { f.options = opts.value.split(",").map(x => x.trim()).filter(Boolean); }; opts.onchange = renderRows;
       const req = document.createElement("label"); req.className = "chk";
       const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!f.required; cb.onchange = () => { f.required = cb.checked; };
       req.append(cb, " Required");
-      const del = document.createElement("button"); del.type = "button"; del.className = "ghost sm danger"; del.textContent = "Remove";
-      del.onclick = () => { draft.splice(i, 1); renderRows(); };
-      row.append(lab, typ, req, del, opts); box.append(row);
+      const mv = d => { const j = i + d; if (j < 0 || j >= draft.length) return; [draft[i], draft[j]] = [draft[j], draft[i]]; renderRows(); };
+      const del = mk("Remove", () => { draft.splice(i, 1); renderRows(); }, "ghost sm danger");
+      row.append(lab, typ, req, mk("Up", () => mv(-1)), mk("Down", () => mv(1)), del, opts);
+
+      // "Show only if" another (earlier) list question has a certain answer
+      const srcs = draft.slice(0, i).filter(x => x.type === "choice" && x.label.trim() && (x.options || []).length);
+      if (!(f.showIf && srcs.some(x => x.key === f.showIf.key))) f.showIf = undefined;
+      if (srcs.length) {
+        const cond = document.createElement("div"); cond.className = "cond";
+        const cs = document.createElement("select"); cs.setAttribute("aria-label", "When to show this question");
+        cs.add(new Option("Always show this question", ""));
+        srcs.forEach(x => cs.add(new Option(`Show only if "${x.label.trim()}" is\u2026`, x.key)));
+        cs.value = f.showIf ? f.showIf.key : "";
+        cs.onchange = () => { f.showIf = cs.value ? { key: cs.value, value: "" } : undefined; renderRows(); };
+        cond.append(cs);
+        const src = f.showIf && srcs.find(x => x.key === f.showIf.key);
+        if (src) {
+          const vs = document.createElement("select"); vs.setAttribute("aria-label", "Answer that shows this question");
+          vs.add(new Option("Choose an answer", ""));
+          src.options.forEach(o => vs.add(new Option(o, o)));
+          vs.value = src.options.includes(f.showIf.value) ? f.showIf.value : "";
+          vs.onchange = () => { f.showIf = { key: src.key, value: vs.value }; };
+          cond.append(vs);
+        }
+        row.append(cond);
+      }
+      box.append(row);
     });
   };
   renderRows();
@@ -880,10 +922,18 @@ function admin() {
     const fields = draft.filter(f => f.label.trim()).map(f => ({
       key: f.key, label: f.label.trim(), type: f.type, required: !!f.required,
       ...(f.type === "choice" ? { options: f.options || [] } : {}),
+      ...(f.showIf && f.showIf.key ? { showIf: { key: f.showIf.key, value: f.showIf.value } } : {}),
     }));
     if (!fields.length) { smsg("Add at least one registration question."); return; }
     const bad = fields.find(f => f.type === "choice" && f.options.length < 2);
     if (bad) { smsg(`Give "${bad.label}" at least two choices.`); return; }
+    for (const [i, f] of fields.entries()) {
+      if (!f.showIf) continue;
+      const si = fields.findIndex(x => x.key === f.showIf.key), src = fields[si];
+      if (!src || si >= i || src.type !== "choice" || !src.options.includes(f.showIf.value)) {
+        smsg(`Fix the "Show only if" setting on "${f.label}": pick a list question above it and one of its answers.`); return;
+      }
+    }
     $("saveSetup").disabled = true;
     try {
       await setDoc(doc(db, "config", "event"), { name, stations, fields });
