@@ -259,6 +259,7 @@ textarea:focus{outline:none;border-color:var(--blue-2);box-shadow:0 0 0 3px rgba
       <thead><tr><th>Station</th><th>Visits</th><th>% of registered</th></tr></thead>
       <tbody id="ag"></tbody>
     </table>
+    <div class="chart" id="brk" hidden><h3>Registrants by sex and age group</h3><div class="tablewrap"><table id="brkT"></table></div></div>
     <h2>Who registered <span id="pcount" style="color:var(--muted);font-weight:600"></span></h2>
     <div class="people-tools">
       <input id="psearch" type="search" placeholder="Search name, mobile, organization or code" aria-label="Search registrants">
@@ -371,6 +372,8 @@ const DEFAULT_FIELDS = [
   { key: "name", label: "Full name", type: "text", required: true },
   { key: "mobile", label: "Mobile number", type: "tel", required: true },
   { key: "org", label: "Barangay or organization", type: "text", required: false },
+  { key: "sex", label: "Sex", type: "choice", required: true, options: ["Male", "Female"] },
+  { key: "agegrp", label: "Age group", type: "choice", required: true, options: ["59 years old and below", "60 years old and above"] },
 ];
 const EV_DEFAULT = {
   name: "Serbisyo Caravan",
@@ -855,7 +858,36 @@ function admin() {
 
   // Registrants: loaded only when you press the button.
   const stampText = p => (detail ? `${detail.per[p.id] || 0} / ${TOTAL}` : "\u2014");
+  // Sex x age group counts from the loaded registrants (no extra reads).
+  const renderBreakdown = () => {
+    const find = re => EV.fields.find(f => f.type === "choice" && re.test(f.label));
+    const sf = find(/\b(sex|gender)\b/i), af = find(/\bage\b/i);
+    if (!people.length || (!sf && !af)) { $("brk").hidden = true; return; }
+    const rowsOf = sf ? [...sf.options, "No answer"] : ["All"], colsOf = af ? [...af.options, "No answer"] : ["Registrants"];
+    const grid = rowsOf.map(() => colsOf.map(() => 0));
+    for (const p of people) {
+      const r = sf ? (sf.options.includes(p[sf.key]) ? sf.options.indexOf(p[sf.key]) : rowsOf.length - 1) : 0;
+      const c = af ? (af.options.includes(p[af.key]) ? af.options.indexOf(p[af.key]) : colsOf.length - 1) : 0;
+      grid[r][c]++;
+    }
+    const t = $("brkT"); t.textContent = "";
+    const addRow = (cells, head) => {
+      const tr = document.createElement("tr");
+      cells.forEach((x, i) => { const el = document.createElement(head || i === 0 ? "th" : "td"); el.textContent = x; if (head || i === 0) el.style.color = "var(--ink)"; tr.append(el); });
+      t.append(tr);
+    };
+    addRow([sf && af ? "Sex \\ Age group" : sf ? "Sex" : "Age group", ...colsOf, ...(af && sf ? ["Total"] : [])], true);
+    rowsOf.forEach((r, i) => {
+      if (r === "No answer" && grid[i].every(n => !n)) return;
+      addRow([r, ...grid[i], ...(af && sf ? [grid[i].reduce((a, b) => a + b, 0)] : [])]);
+    });
+    if (sf && af) addRow(["Total", ...colsOf.map((_, j) => grid.reduce((a, row) => a + row[j], 0)), people.length]);
+    // hide the "No answer" column when nobody is in it
+    if (af && grid.every(row => !row[colsOf.length - 1])) t.querySelectorAll("tr").forEach(tr => tr.children[colsOf.length]?.remove());
+    $("brk").hidden = false;
+  };
   const renderPeople = () => {
+    renderBreakdown();
     const q = $("psearch").value.trim().toLowerCase();
     const list = people.filter(p => !q || [p.id, ...EV.fields.map(f => p[f.key])].some(x => String(x || "").toLowerCase().includes(q)));
     $("pbody").textContent = "";
