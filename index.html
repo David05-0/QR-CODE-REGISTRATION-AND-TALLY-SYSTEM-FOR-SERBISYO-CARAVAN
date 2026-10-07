@@ -1123,7 +1123,7 @@ function admin() {
   // ----- Events list -----
   const openEvent = id => { location.href = `${BASE}?page=admin&event=${encodeURIComponent(id)}`; };
   const renderEvents = async () => {
-    $("emsg").textContent = "";
+
     try {
       const [snap, act] = await Promise.all([getDocs(collection(db, "events")), getDoc(doc(db, "config", "active"))]);
       const activeId = act.exists() && act.data().id ? act.data().id : "default";
@@ -1148,9 +1148,39 @@ function admin() {
           };
           acts.append(m);
         }
+        // Delete this event and all of its data (never the active event or the one open right now)
+        {
+          const d = document.createElement("button"); d.className = "ghost sm danger"; d.textContent = "Delete";
+          d.onclick = async () => {
+            $("emsg").textContent = "";
+            if (e.id === activeId) { $("emsg").textContent = "This is the active event. Click \"Make active\" on another event first, then delete this one."; return; }
+            if (e.id === EVID) { $("emsg").textContent = "You have this event open. Open a different event first, then delete this one."; return; }
+            const nm = e.name || e.id;
+            if (prompt(`Permanently delete the event "${nm}"?\nThis erases its setup, every registered participant, every visit and all rounds. It cannot be undone.\n\nType DELETE EVENT to confirm.`) !== "DELETE EVENT") { $("emsg").textContent = "Cancelled: the text did not match, so nothing was deleted."; return; }
+            d.disabled = true;
+            try {
+              const byEv = c => getDocs(query(collection(db, c), where("event", "==", e.id)));
+              const [vs, ps, ph] = await Promise.all([byEv("visits"), byEv("participants"), byEv("phones").catch(() => ({ docs: [] }))]);
+              const refs = [...vs.docs, ...ps.docs, ...ph.docs].map(x => x.ref);
+              refs.push(doc(db, "counters", e.id), doc(db, "rounds", e.id), doc(db, "events", e.id));
+              await batchDelete(refs);
+              ["eventCfg:", "participantId:", "stampStore:"].forEach(k => localStorage.removeItem(k + e.id));
+              $("emsg").className = "msg ok"; $("emsg").textContent = `Deleted "${nm}" (${ps.docs.length} participant(s), ${vs.docs.length} visit(s)).`;
+              renderEvents();
+            } catch (err) {
+              console.error(err);
+              $("emsg").className = "msg";
+              $("emsg").textContent = err.code === "permission-denied"
+                ? "Delete is locked, so nothing was deleted. In Firebase, set settings/admin: deleteEnabled = true and setupEnabled = true (and publish the latest rules), then try again."
+                : "Delete failed. Check your connection and try again.";
+              d.disabled = false;
+            }
+          };
+          acts.append(d);
+        }
         row.append(left, acts); box.append(row);
       });
-    } catch (e) { console.error(e); $("emsg").textContent = "Could not load the events. Check your connection."; }
+    } catch (e) { console.error(e); $("emsg").className = "msg"; $("emsg").textContent = "Could not load the events. Check your connection."; }
   };
   renderEvents();
 
